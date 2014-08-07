@@ -5,6 +5,9 @@ cache [I18n.locale, 'big_variant', root_object]
 
 extends "spree/api/variants/small"
 
+attribute :total_on_hand => :total_on_hand
+
+
 child(:stock_items => :stock_items) do
   attributes :id, :count_on_hand, :stock_location_id, :backorderable
   attribute :available? => :available
