@@ -5,7 +5,9 @@ cache [I18n.locale, 'big_variant', root_object]
 
 extends "spree/api/variants/small"
 
-attribute :total_on_hand => :total_on_hand
+node :total_on_hand do
+  root_object.total_on_hand
+end
 
 
 child(:stock_items => :stock_items) do
