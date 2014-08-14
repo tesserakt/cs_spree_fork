@@ -314,7 +314,7 @@ module Spree
 
       begin
         transaction do
-          self.order.contents.remove(variant, quantity, {shipment: self})
+          self.order.contents.remove(variant, quantity, self)
           new_shipment = self.order.shipments.create!(stock_location: stock_location)
           self.order.contents.add(variant, quantity, {shipment: new_shipment})
 
@@ -343,7 +343,7 @@ module Spree
 
       begin
         transaction do
-          self.order.contents.remove(variant, quantity, {shipment: self})
+          self.order.contents.remove(variant, quantity, self)
           shipment_to_transfer_to.order.contents.add(variant, quantity, {shipment: shipment_to_transfer_to})
           shipment_to_transfer_to.refresh_rates
           shipment_to_transfer_to.save!
