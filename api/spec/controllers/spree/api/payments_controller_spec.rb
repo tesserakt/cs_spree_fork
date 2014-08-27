@@ -140,7 +140,8 @@ module Spree
 
             it "returns a 422 status" do
               response.status.should == 422
-              json_response["error"].should == "There was a problem with the payment gateway: Could not authorize card"
+              expect(json_response["error"]).to eq "Invalid resource. Please fix errors and try again."
+              expect(json_response["errors"]["base"][0]).to eq "Could not authorize card"
             end
 
             it "does not raise a stack level error" do
@@ -166,7 +167,8 @@ module Spree
             it "returns a 422 status" do
               api_put :capture, :id => payment.to_param
               response.status.should == 422
-              json_response["error"].should == "There was a problem with the payment gateway: Insufficient funds"
+              expect(json_response["error"]).to eq "Invalid resource. Please fix errors and try again."
+              expect(json_response["errors"]["base"][0]).to eq "Insufficient funds"
             end
           end
         end
@@ -187,30 +189,31 @@ module Spree
             it "returns a 422 status" do
               api_put :purchase, :id => payment.to_param
               response.status.should == 422
-              json_response["error"].should == "There was a problem with the payment gateway: Insufficient funds"
+              expect(json_response["error"]).to eq "Invalid resource. Please fix errors and try again."
+              expect(json_response["errors"]["base"][0]).to eq "Insufficient funds"
             end
           end
         end
 
         context "voiding" do
           it "can void" do
-            api_put :void, :id => payment.to_param
-            response.status.should == 200
-            payment.reload.state.should == "void"
+            api_put :void, id: payment.to_param
+            expect(response.status).to eq 200
+            expect(payment.reload.state).to eq "void"
           end
 
           context "voiding fails" do
             before do
-              fake_response = double(:success? => false, :to_s => "NO REFUNDS")
+              fake_response = double(success?: false, to_s: "NO REFUNDS")
               Spree::Gateway::Bogus.any_instance.should_receive(:void).and_return(fake_response)
             end
 
             it "returns a 422 status" do
-              api_put :void, :id => payment.to_param
-              response.status.should == 422
-              json_response["error"].should == "There was a problem with the payment gateway: NO REFUNDS"
-
-              payment.reload.state.should == "checkout"
+              api_put :void, id: payment.to_param
+              expect(response.status).to eq 422
+              expect(json_response["error"]).to eq "Invalid resource. Please fix errors and try again."
+              expect(json_response["errors"]["base"][0]).to eq "NO REFUNDS"
+              expect(payment.reload.state).to eq "checkout"
             end
           end
         end
@@ -236,7 +239,8 @@ module Spree
               Spree::Gateway::Bogus.any_instance.should_receive(:credit).and_return(fake_response)
               api_put :credit, :id => payment.to_param
               response.status.should == 422
-              json_response["error"].should == "There was a problem with the payment gateway: NO CREDIT FOR YOU"
+              expect(json_response["error"]).to eq "Invalid resource. Please fix errors and try again."
+              expect(json_response["errors"]["base"][0]).to eq "NO CREDIT FOR YOU"
             end
 
             it "cannot credit over credit_allowed limit" do

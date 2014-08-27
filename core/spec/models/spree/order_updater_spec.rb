@@ -30,6 +30,29 @@ module Spree
         order.shipment_total.should == 10
       end
 
+      context 'with order promotion followed by line item addition' do
+        let(:promotion) { Spree::Promotion.create!(:name => "10% off") }
+        let(:calculator) { Calculator::FlatPercentItemTotal.new(:preferred_flat_percent => 10) }
+
+        let(:promotion_action) do
+          Promotion::Actions::CreateAdjustment.create!({
+            calculator: calculator,
+            promotion: promotion,
+          })
+        end
+
+        before do
+          updater.update
+          create(:adjustment, :source => promotion_action, :adjustable => order)
+          create(:line_item, :order => order, price: 10) # in addition to the two already created
+          updater.update
+        end
+
+        it "updates promotion total" do
+          order.promo_total.should == -3
+        end
+      end
+
       it "update order adjustments" do
         # A line item will not have both additional and included tax,
         # so please just humour me for now.
@@ -88,8 +111,8 @@ module Spree
       let(:order) { Order.new }
       let(:updater) { order.updater }
 
-      it "is failed if last payment failed" do
-        order.stub_chain(:payments, :last, :state).and_return('failed')
+      it "is failed if no valid payments" do
+        order.stub_chain(:payments, :valid, :size).and_return(0)
 
         updater.update_payment_state
         order.payment_state.should == 'failed'
@@ -149,7 +172,7 @@ module Spree
           it "is credit_owed" do
             order.payment_total = 30
             order.total = 30
-            order.stub_chain(:payments, :last, :state).and_return('completed')
+            order.stub_chain(:payments, :valid, :size).and_return(1)
             order.stub_chain(:payments, :completed, :size).and_return(1)
             expect {
               updater.update_payment_state
@@ -162,7 +185,7 @@ module Spree
           it "is void" do
             order.payment_total = 0
             order.total = 30
-            order.stub_chain(:payments, :last, :state).and_return('completed')
+            order.stub_chain(:payments, :valid, :size).and_return(1)
             order.stub_chain(:payments, :completed, :size).and_return(2)
             expect {
               updater.update_payment_state
@@ -201,7 +224,7 @@ module Spree
       end
 
       it "updates each shipment" do
-        shipment = stub_model(Spree::Shipment)
+        shipment = stub_model(Spree::Shipment, :order => order)
         shipments = [shipment]
         order.stub :shipments => shipments
         shipments.stub :states => []
@@ -210,6 +233,24 @@ module Spree
         shipments.stub :shipped => []
 
         shipment.should_receive(:update!).with(order)
+        updater.update_shipments
+      end
+
+      it "refreshes shipment rates" do
+        shipment = stub_model(Spree::Shipment, :order => order)
+        shipments = [shipment]
+        order.stub :shipments => shipments
+
+        shipment.should_receive(:refresh_rates)
+        updater.update_shipments
+      end
+
+      it "updates the shipment amount" do
+        shipment = stub_model(Spree::Shipment, :order => order)
+        shipments = [shipment]
+        order.stub :shipments => shipments
+
+        shipment.should_receive(:update_amounts)
         updater.update_shipments
       end
     end

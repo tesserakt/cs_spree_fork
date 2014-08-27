@@ -30,6 +30,8 @@ module Spree
 
     after_initialize :build_source
 
+    default_scope -> { order("#{self.table_name}.created_at") }
+
     scope :from_credit_card, -> { where(source_type: 'Spree::CreditCard') }
     scope :with_state, ->(s) { where(state: s.to_s) }
     scope :completed, -> { with_state('completed') }
@@ -173,6 +175,8 @@ module Spree
 
       def create_payment_profile
         return unless source.respond_to?(:has_payment_profile?) && !source.has_payment_profile?
+        # Imported payments shouldn't create a payment profile.
+        return if source.imported
 
         payment_method.create_profile(self)
       rescue ActiveMerchant::ConnectionError => e

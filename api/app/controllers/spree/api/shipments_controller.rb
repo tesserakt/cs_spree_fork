@@ -9,12 +9,10 @@ module Spree
         @order = Spree::Order.find_by!(number: params[:shipment][:order_id])
         authorize! :read, @order
         authorize! :create, Shipment
-        variant = Spree::Variant.find(params[:variant_id])
         quantity = params[:quantity].to_i
         @shipment = @order.shipments.create(stock_location_id: params[:stock_location_id])
         @order.contents.add(variant, quantity, nil, @shipment)
 
-        @shipment.refresh_rates
         @shipment.save!
 
         respond_with(@shipment.reload, default_template: :show)
@@ -46,7 +44,6 @@ module Spree
       end
 
       def add
-        variant = Spree::Variant.find(params[:variant_id])
         quantity = params[:quantity].to_i
 
         @shipment.order.contents.add(variant, quantity, nil, @shipment)
@@ -55,7 +52,6 @@ module Spree
       end
 
       def remove
-        variant = Spree::Variant.find(params[:variant_id])
         quantity = params[:quantity].to_i
 
         @shipment.order.contents.remove(variant, quantity, @shipment)
@@ -99,6 +95,10 @@ module Spree
         else
           {}
         end
+      end
+
+      def variant
+        @variant ||= Spree::Variant.unscoped.find(params.fetch(:variant_id))
       end
     end
   end
