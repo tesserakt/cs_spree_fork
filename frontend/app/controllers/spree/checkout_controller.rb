@@ -76,15 +76,15 @@ module Spree
       end
     end
 
+    def load_order_with_lock
+      @order = current_order
+      redirect_to spree.cart_path and return unless @order
+    end
+
     # Should be overriden if you have areas of your checkout that don't match
     # up to a step within checkout_steps, such as a registration step
     def skip_state_validation?
       false
-    end
-
-    def load_order_with_lock
-      @order = current_order(lock: true)
-      redirect_to(spree.cart_path) && return unless @order
     end
 
     def ensure_valid_state_lock_version
