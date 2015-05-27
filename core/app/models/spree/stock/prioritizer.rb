@@ -30,8 +30,13 @@ module Spree
 
       def visit_packages(adjuster)
         packages.each do |package|
-          item = package.find_item adjuster.inventory_unit, adjuster.status
-          adjuster.adjust(package) if item
+          if !adjuster.fulfilled
+            can_fulfill = package.can_fulfill?(adjuster.inventory_unit, adjuster.status)
+            if can_fulfill
+              package.fulfill(adjuster.inventory_unit, adjuster.status)
+              adjuster.fulfilled = true
+            end
+          end
         end
       end
 

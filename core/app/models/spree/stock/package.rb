@@ -2,12 +2,16 @@ module Spree
   module Stock
     class Package
       attr_reader :stock_location, :contents
-      attr_accessor :shipping_rates
+      attr_accessor :shipping_rates,
+                    :number_i_can_fulfill_on_hand_by_variant,
+                    :number_i_can_fulfill_backordered_by_variant
 
       def initialize(stock_location, contents=[])
         @stock_location = stock_location
         @contents = contents
         @shipping_rates = Array.new
+        @number_i_can_fulfill_on_hand_by_variant = {}
+        @number_i_can_fulfill_backordered_by_variant = {}
       end
 
       def add(inventory_unit, state = :on_hand)
@@ -21,6 +25,28 @@ module Spree
       def remove(inventory_unit)
         item = find_item(inventory_unit)
         @contents -= [item] if item
+      end
+
+      def can_fulfill?(inventory_unit, state)
+        number_i_can_fulfill = number_i_can_fulfill_by_variant_and_state(inventory_unit.variant, state)
+        if number_i_can_fulfill > 0
+          true
+        else
+          false
+        end
+      end
+
+      def fulfill(inventory_unit, state)
+        add(inventory_unit, state)
+        reduce_number_i_can_fulfill_for_variant_and_state(inventory_unit.variant, state)
+      end
+
+      def number_i_can_fulfill_by_variant_and_state(variant, state)
+        self.instance_variable_get("@number_i_can_fulfill_#{state}_by_variant")[variant.id]
+      end
+
+      def reduce_number_i_can_fulfill_for_variant_and_state(variant, state)
+        self.send("number_i_can_fulfill_#{state}_by_variant")[variant.id] -= 1
       end
 
       # Fix regression that removed package.order.
