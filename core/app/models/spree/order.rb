@@ -36,6 +36,9 @@ module Spree
       remove_transition from: :delivery, to: :confirm
     end
 
+    self.whitelisted_ransackable_associations = %w[shipments user promotions bill_address ship_address line_items]
+    self.whitelisted_ransackable_attributes =  %w[completed_at created_at email number state payment_state shipment_state total considered_risky]
+
     attr_reader :coupon_code
     attr_accessor :temporary_address, :temporary_credit_card
 
@@ -595,7 +598,7 @@ module Spree
       if shipments.empty? || shipments.any? { |shipment| shipment.shipping_rates.blank? }
         # After this point, order redirects back to 'address' state and asks user to pick a proper address
         # Therefore, shipments are not necessary at this point.
-        shipments.delete_all
+        shipments.destroy_all
         errors.add(:base, Spree.t(:items_cannot_be_shipped)) and return false
       end
     end
