@@ -115,7 +115,9 @@ module Spree
               before_transition to: :complete, do: :ensure_line_item_variants_are_not_deleted
               before_transition to: :complete, do: :ensure_line_items_are_in_stock
 
-              after_transition to: :complete, do: :finalize!
+              # ugh have to change this to a before_transition so that the temporary credit card numbers
+              # stick around!
+              before_transition to: :complete, do: :finalize!
               after_transition to: :resumed, do: :after_resume
               after_transition to: :canceled, do: :after_cancel
 
