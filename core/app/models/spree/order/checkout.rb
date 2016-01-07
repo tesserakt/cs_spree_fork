@@ -118,6 +118,7 @@ module Spree
               # ugh have to change this to a before_transition so that the temporary credit card numbers
               # stick around!
               before_transition to: :complete, do: :finalize!
+              after_transition to: :complete, do: :update_after_complete
               after_transition to: :resumed, do: :after_resume
               after_transition to: :canceled, do: :after_cancel
 
