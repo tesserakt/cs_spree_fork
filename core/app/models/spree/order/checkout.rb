@@ -77,15 +77,18 @@ module Spree
               end
 
               if states[:payment]
-                before_transition to: :complete do |order|
-                  if order.payment_required? && order.payments.valid.empty?
-                    order.errors.add(:base, Spree.t(:no_payment_found))
-                    false
-                  elsif order.payment_required?
-                    order.process_payments!
-                  end
-                end
-                after_transition to: :complete, do: :persist_user_credit_card
+                # put this in the finalize! method in the app
+
+                # before_transition to: :complete do |order|
+                #   if order.payment_required? && order.payments.valid.empty?
+                #     order.errors.add(:base, Spree.t(:no_payment_found))
+                #     false
+                #   elsif order.payment_required?
+                #     order.process_payments!
+                #   end
+                # end
+
+                # after_transition to: :complete, do: :persist_user_credit_card
                 before_transition to: :payment, do: :set_shipments_cost
                 before_transition to: :payment, do: :create_tax_charge!
                 before_transition to: :payment, do: :assign_default_credit_card
@@ -112,7 +115,10 @@ module Spree
               before_transition to: :complete, do: :ensure_line_item_variants_are_not_deleted
               before_transition to: :complete, do: :ensure_line_items_are_in_stock
 
-              after_transition to: :complete, do: :finalize!
+              # ugh have to change this to a before_transition so that the temporary credit card numbers
+              # stick around!
+              before_transition to: :complete, do: :finalize!
+              after_transition to: :complete, do: :update_after_complete
               after_transition to: :resumed, do: :after_resume
               after_transition to: :canceled, do: :after_cancel
 
