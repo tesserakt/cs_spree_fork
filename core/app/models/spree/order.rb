@@ -69,7 +69,7 @@ module Spree
     has_many :adjustments, -> { order("#{Adjustment.table_name}.created_at ASC") }, as: :adjustable, dependent: :destroy
     has_many :line_item_adjustments, through: :line_items, source: :adjustments
     has_many :shipment_adjustments, through: :shipments, source: :adjustments
-    has_many :inventory_units, inverse_of: :order
+    has_many :inventory_units, inverse_of: :order, dependent: :delete_all
     has_many :products, through: :variants
     has_many :variants, through: :line_items
     has_many :refunds, through: :payments
