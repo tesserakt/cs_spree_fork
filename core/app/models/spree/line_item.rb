@@ -8,7 +8,7 @@ module Spree
     has_one :product, through: :variant
 
     has_many :adjustments, as: :adjustable, dependent: :destroy
-    has_many :inventory_units, inverse_of: :line_item, dependent: :delete_all
+    has_many :inventory_units, inverse_of: :line_item
 
     before_validation :copy_price
     before_validation :copy_tax_category
@@ -24,7 +24,6 @@ module Spree
 
     validate :ensure_proper_currency
     before_destroy :update_inventory
-    before_destroy :destroy_inventory_units
 
     after_save :update_inventory
     after_save :update_adjustments
@@ -127,10 +126,6 @@ module Spree
         if (changed? || target_shipment.present?) && self.order.has_checkout_step?("delivery")
           Spree::OrderInventory.new(self.order, self).verify(target_shipment)
         end
-      end
-
-      def destroy_inventory_units
-        inventory_units.destroy_all
       end
 
       def update_adjustments
