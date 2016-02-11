@@ -9,10 +9,10 @@
 //= require spree/backend/taxons
 
 /**
-This is a collection of javascript functions and whatnot
-under the spree namespace that do stuff we find helpful.
-Hopefully, this will evolve into a propper class.
-**/
+ This is a collection of javascript functions and whatnot
+ under the spree namespace that do stuff we find helpful.
+ Hopefully, this will evolve into a propper class.
+ **/
 
 jQuery(function($) {
 
@@ -224,12 +224,12 @@ $(document).ready(function(){
     target = $(this).data("update");
     $(target).hide();
     $.ajax({ dataType: 'html',
-             url: $(this).data("base-url")+encodeURIComponent($(this).val()),
-             type: 'get',
-             success: function(data){
-               $(target).html(data);
-               $(target).show();
-             }
+      url: $(this).data("base-url")+encodeURIComponent($(this).val()),
+      type: 'get',
+      success: function(data){
+        $(target).html(data);
+        $(target).show();
+      }
     });
   });
 
@@ -308,20 +308,20 @@ $(document).ready(function(){
     $("#busy_indicator").show();
     var clicked_link = $(this);
     $.ajax({ dataType: 'script', url: clicked_link.prop("href"), type: 'get',
-        success: function(data){
-          clicked_link.parent("td").parent("tr").hide();
-          $("#busy_indicator").hide();
-        }
+      success: function(data){
+        clicked_link.parent("td").parent("tr").hide();
+        $("#busy_indicator").hide();
+      }
     });
     return false;
   });
 
   // Fix sortable helper
   var fixHelper = function(e, ui) {
-      ui.children().each(function() {
-          $(this).width($(this).width());
-      });
-      return ui;
+    ui.children().each(function() {
+      $(this).width($(this).width());
+    });
+    return ui;
   };
 
   $('table.sortable').ready(function(){
@@ -369,15 +369,34 @@ $(document).ready(function(){
   });
 
   window.Spree.advanceOrder = function() {
-      $.ajax({
-          type: "PUT",
-          async: false,
-          data: {
-            token: Spree.api_key
-          },
-          url: Spree.url(Spree.routes.checkouts_api + "/" + order_number + "/advance")
-      }).done(function() {
-          window.location.reload();
-      });
-  }
+    window.location.reload();
+  };
+
+  $('#refund_taxes').change(function() {
+    $('#should_we_tax').val($(this).val());
+  });
+
+  window.Spree.showBootstrapInfoModal = function(text) {
+    if (!$('#myModal').length){
+      var customModal =
+        '<div id="myModal" class="modal fade"> \
+        <div class="modal-dialog"> \
+        <div class="modal-content"> \
+        <div class="modal-header"> \
+        <button type="button" class="close" data-dismiss="modal" aria-hidden="true">&times;</button> \
+    <h4 class="modal-title">Error</h4> \
+        </div> \
+        <div class="modal-body"> \
+        </div> \
+        <div class="modal-footer"> \
+        <button class="modal-ok" type="button" class="btn btn-default" data-dismiss="modal">OK</button> \
+        </div> \
+        </div> \
+        </div> \
+        </div> '
+      $('body').append(customModal);
+    }
+    $('#myModal .modal-body').html(text);
+    $('#myModal').modal();
+  };
 });
