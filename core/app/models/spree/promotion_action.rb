@@ -15,5 +15,11 @@ module Spree
     def perform(options = {})
       raise 'perform should be implemented in a sub-class of PromotionAction'
     end
+
+    protected
+
+    def label(amount)
+      "#{Spree.t(:promotion)} (#{promotion.name})"
+    end
   end
 end

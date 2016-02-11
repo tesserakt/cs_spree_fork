@@ -2,6 +2,17 @@ require 'ostruct'
 
 module Spree
   class Shipment < Spree::Base
+    extend FriendlyId
+    friendly_id :number, slug_column: :number, use: :slugged
+
+    include Spree::NumberGenerator
+
+    def generate_number(options = {})
+      options[:prefix] ||= 'H'
+      options[:length] ||= 11
+      super(options)
+    end
+
     belongs_to :address, class_name: 'Spree::Address', inverse_of: :shipments
     belongs_to :order, class_name: 'Spree::Order', touch: true, inverse_of: :shipments
     belongs_to :stock_location, class_name: 'Spree::StockLocation'
@@ -16,18 +27,20 @@ module Spree
 
     before_validation :set_cost_zero_when_nil
 
+    validates :stock_location, presence: true
+
     attr_accessor :special_instructions
 
     accepts_nested_attributes_for :address
     accepts_nested_attributes_for :inventory_units
-
-    make_permalink field: :number, length: 11, prefix: 'H'
 
     scope :pending, -> { with_state('pending') }
     scope :ready,   -> { with_state('ready') }
     scope :shipped, -> { with_state('shipped') }
     scope :trackable, -> { where("tracking IS NOT NULL AND tracking != ''") }
     scope :with_state, ->(*s) { where(state: s) }
+    # sort by most recent shipped_at, falling back to created_at. add "id desc" to make specs that involve this scope more deterministic.
+    scope :reverse_chronological, -> { order('coalesce(spree_shipments.shipped_at, spree_shipments.created_at) desc', id: :desc) }
 
     # shipment state machine (see http://github.com/pluginaweek/state_machine/tree/master for details)
     state_machine initial: :pending, use_transactions: false do
@@ -43,7 +56,7 @@ module Spree
       end
 
       event :ship do
-        transition from: :ready, to: :shipped
+        transition from: [:ready, :canceled], to: :shipped
       end
       after_transition to: :shipped, do: :after_ship
 
@@ -61,7 +74,7 @@ module Spree
         }
         transition from: :canceled, to: :pending
       end
-      after_transition from: :canceled, to: [:pending, :ready], do: :after_resume
+      after_transition from: :canceled, to: [:pending, :ready, :shipped], do: :after_resume
 
       after_transition do |shipment, transition|
         shipment.state_changes.create!(
@@ -71,6 +84,12 @@ module Spree
         )
       end
     end
+
+    self.whitelisted_ransackable_attributes = ['number']
+
+    extend DisplayMoney
+    money_methods :cost, :discounted_cost, :final_price, :item_cost
+    alias display_amount display_cost
 
     def add_shipping_method(shipping_method, selected = false)
       shipping_rates.create(shipping_method: shipping_method, selected: selected, cost: cost)
@@ -110,29 +129,12 @@ module Spree
     end
     alias discounted_amount discounted_cost
 
-    def display_cost
-      Spree::Money.new(cost, { currency: currency })
-    end
-    alias display_amount display_cost
-
-    def display_discounted_cost
-      Spree::Money.new(discounted_cost, { currency: currency })
-    end
-
-    def display_final_price
-      Spree::Money.new(final_price, { currency: currency })
-    end
-
-    def display_item_cost
-      Spree::Money.new(item_cost, { currency: currency })
-    end
-
     def editable_by?(user)
       !shipped?
     end
 
     def final_price
-      discounted_cost + tax_total
+      cost + adjustment_total
     end
 
     def final_price_with_items
@@ -157,7 +159,7 @@ module Spree
     end
 
     def item_cost
-      line_items.map(&:amount).sum
+      manifest.map { |m| (m.line_item.price + (m.line_item.adjustment_total / m.line_item.quantity)) * m.quantity }.sum
     end
 
     def line_items
@@ -186,46 +188,41 @@ module Spree
       pending_payments =  order.pending_payments
                             .sort_by(&:uncaptured_amount).reverse
 
-      if pending_payments.empty?
-        raise Spree::Core::GatewayError, Spree.t(:no_pending_payments)
-      else
-        shipment_to_pay = final_price_with_items
-        payments_amount = 0
+      shipment_to_pay = final_price_with_items
+      payments_amount = 0
 
-        payments_pool = pending_payments.each_with_object([]) do |payment, pool|
-          next if payments_amount >= shipment_to_pay
-          payments_amount += payment.uncaptured_amount
-          pool << payment
-        end
-
-        payments_pool.each do |payment|
-          capturable_amount = if payment.amount >= shipment_to_pay
-                                shipment_to_pay
-                              else
-                                payment.amount
-                              end
-          cents = (capturable_amount * 100).to_i
-          payment.capture!(cents)
-          shipment_to_pay -= capturable_amount
-        end
+      payments_pool = pending_payments.each_with_object([]) do |payment, pool|
+        break if payments_amount >= shipment_to_pay
+        payments_amount += payment.uncaptured_amount
+        pool << payment
       end
-    rescue Spree::Core::GatewayError => e
-      errors.add(:base, e.message)
-      return !!Spree::Config[:allow_checkout_on_gateway_error]
+
+      payments_pool.each do |payment|
+        capturable_amount = if payment.amount >= shipment_to_pay
+                              shipment_to_pay
+                            else
+                              payment.amount
+                            end
+
+        cents = (capturable_amount * 100).to_i
+        payment.capture!(cents)
+        shipment_to_pay -= capturable_amount
+      end
     end
 
     def ready_or_pending?
       self.ready? || self.pending?
     end
 
-    def refresh_rates
+    def refresh_rates(shipping_method_filter = ShippingMethod::DISPLAY_ON_FRONT_END)
       return shipping_rates if shipped?
       return [] unless can_get_rates?
 
       # StockEstimator.new assigment below will replace the current shipping_method
       original_shipping_method_id = shipping_method.try(:id)
 
-      self.shipping_rates = Stock::Estimator.new(order).shipping_rates(to_package)
+      self.shipping_rates = Stock::Estimator.new(order).
+      shipping_rates(to_package, shipping_method_filter)
 
       if shipping_method
         selected_rate = shipping_rates.detect { |rate|
@@ -282,14 +279,10 @@ module Spree
 
     def to_package
       package = Stock::Package.new(stock_location)
-      inventory_units.group_by(&:state).each do |state, state_inventory_units|
+      inventory_units.includes(:variant).joins(:variant).group_by(&:state).each do |state, state_inventory_units|
         package.add_multiple state_inventory_units, state.to_sym
       end
       package
-    end
-
-    def to_param
-      number
     end
 
     def tracking_url
@@ -349,6 +342,42 @@ module Spree
       after_ship if new_state == 'shipped' and old_state != 'shipped'
     end
 
+    def transfer_to_location(variant, quantity, stock_location)
+      if quantity <= 0
+        raise ArgumentError
+      end
+
+      transaction do
+        new_shipment = order.shipments.create!(stock_location: stock_location)
+
+        order.contents.remove(variant, quantity, {shipment: self})
+        order.contents.add(variant, quantity, {shipment: new_shipment})
+
+        refresh_rates
+        save!
+        new_shipment.save!
+      end
+    end
+
+    def transfer_to_shipment(variant, quantity, shipment_to_transfer_to)
+      quantity_already_shipment_to_transfer_to = shipment_to_transfer_to.manifest.find{|mi| mi.line_item.variant == variant}.try(:quantity) || 0
+      final_quantity = quantity + quantity_already_shipment_to_transfer_to
+
+      if (quantity <= 0 || self == shipment_to_transfer_to)
+        raise ArgumentError
+      end
+
+      transaction do
+        order.contents.remove(variant, quantity, {shipment: self})
+        order.contents.add(variant, quantity, {shipment: shipment_to_transfer_to})
+
+        refresh_rates
+        save!
+        shipment_to_transfer_to.refresh_rates
+        shipment_to_transfer_to.save!
+      end
+    end
+
     private
 
       def after_ship
@@ -374,11 +403,11 @@ module Spree
       end
 
       def recalculate_adjustments
-        Spree::ItemAdjustments.new(self).update
+        Adjustable::AdjustmentsUpdater.update(self)
       end
 
       def send_shipped_email
-        ShipmentMailer.shipped_email(self.id).deliver
+        ShipmentMailer.shipped_email(id).deliver_later
       end
 
       def set_cost_zero_when_nil

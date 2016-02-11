@@ -3,7 +3,7 @@ module Spree
     belongs_to :variant, class_name: "Spree::Variant", inverse_of: :inventory_units
     belongs_to :order, class_name: "Spree::Order", inverse_of: :inventory_units
     belongs_to :shipment, class_name: "Spree::Shipment", touch: true, inverse_of: :inventory_units
-    belongs_to :return_authorization, class_name: "Spree::ReturnAuthorization"
+    belongs_to :return_authorization, class_name: "Spree::ReturnAuthorization", inverse_of: :inventory_units
     belongs_to :line_item, class_name: "Spree::LineItem", inverse_of: :inventory_units
 
     has_many :return_items, inverse_of: :inventory_unit
@@ -26,7 +26,7 @@ module Spree
       event :fill_backorder do
         transition to: :on_hand, from: :backordered
       end
-      after_transition on: :fill_backorder, do: :update_order
+      after_transition on: :fill_backorder, do: :fulfill_order
 
       event :ship do
         transition to: :shipped, if: :allow_ship?
@@ -69,12 +69,7 @@ module Spree
     end
 
     def current_or_new_return_item
-      current_return_item || Spree::ReturnItem.new(inventory_unit: self,
-                                                   pre_tax_amount: pre_tax_amount)
-    end
-
-    def pre_tax_amount
-      weighted_order_adjustment_amount + weighted_line_item_pre_tax_amount
+      Spree::ReturnItem.from_inventory_unit(self)
     end
 
     def additional_tax_total
@@ -91,21 +86,9 @@ module Spree
         self.on_hand?
       end
 
-      def update_order
-        order.update!
-      end
-
-      def weighted_line_item_pre_tax_amount
-        line_item.pre_tax_amount * percentage_of_line_item
-      end
-
-      def weighted_order_adjustment_amount
-        order.adjustments.eligible.non_tax.sum(:amount) * percentage_of_order_total
-      end
-
-      def percentage_of_order_total
-        return 0.0 if order.pre_tax_item_amount.zero?
-        weighted_line_item_pre_tax_amount / order.pre_tax_item_amount
+      def fulfill_order
+        self.reload
+        order.fulfill!
       end
 
       def percentage_of_line_item

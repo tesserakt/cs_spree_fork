@@ -1,5 +1,4 @@
 object @variant
-attributes *variant_attributes
 
 cache [I18n.locale, @current_user_roles.include?('admin'), 'big_variant', root_object]
 

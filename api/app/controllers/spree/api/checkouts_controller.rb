@@ -1,19 +1,19 @@
 module Spree
   module Api
     class CheckoutsController < Spree::Api::BaseController
-      before_filter :associate_user, only: :update
+      before_action :associate_user, only: :update
 
       include Spree::Core::ControllerHelpers::Auth
       include Spree::Core::ControllerHelpers::Order
       # This before_filter comes from Spree::Core::ControllerHelpers::Order
-      skip_before_filter :set_current_order
+      skip_before_action :set_current_order
 
       def next
         load_order(true)
         authorize! :update, @order, order_token
         @order.next!
         respond_with(@order, default_template: 'spree/api/orders/show', status: 200)
-      rescue StateMachine::InvalidTransition
+      rescue StateMachines::InvalidTransition
         respond_with(@order, default_template: 'spree/api/orders/could_not_transition', status: 422)
       end
 
@@ -34,8 +34,13 @@ module Spree
           end
 
           return if after_update_attributes
-          state_callback(:after) if @order.next
-          respond_with(@order, default_template: 'spree/api/orders/show')
+
+          if @order.completed? || @order.next
+            state_callback(:after)
+            respond_with(@order, default_template: 'spree/api/orders/show')
+          else
+            respond_with(@order, default_template: 'spree/api/orders/could_not_transition', status: 422)
+          end
         else
           invalid_resource!(@order)
         end
@@ -47,7 +52,7 @@ module Spree
         end
 
         def nested_params
-          map_nested_attributes_keys Order, params[:order] || {}
+          map_nested_attributes_keys Spree::Order, params[:order] || {}
         end
 
         # Should be overriden if you have areas of your checkout that don't match
@@ -74,7 +79,7 @@ module Spree
 
         def after_update_attributes
           if nested_params && nested_params[:coupon_code].present?
-            handler = PromotionHandler::Coupon.new(@order).apply
+            handler = Spree::PromotionHandler::Coupon.new(@order).apply
 
             if handler.error.present?
               @coupon_message = handler.error

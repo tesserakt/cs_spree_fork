@@ -1,6 +1,6 @@
 require 'spec_helper'
 
-describe "Adjustments Promotions" do
+describe "Adjustments Promotions", type: :feature do
   stub_authorization!
 
   before(:each) do
@@ -22,31 +22,31 @@ describe "Adjustments Promotions" do
 
   context "admin adding a promotion" do
     context "successfully" do
-      it "should create a new adjustment", :js => true do
-        fill_in "coupon_code", :with => "10_off"
+      it "should create a new adjustment", js: true do
+        fill_in "coupon_code", with: "10_off"
         click_button "Add Coupon Code"
-        page.should have_content("$10 off")
-        page.should have_content("-$10.00")
+        expect(page).to have_content("$10 off")
+        expect(page).to have_content("-$10.00")
       end
     end
 
     context "for non-existing promotion" do
-      it "should show an error message", :js => true do
-        fill_in "coupon_code", :with => "does_not_exist"
+      it "should show an error message", js: true do
+        fill_in "coupon_code", with: "does_not_exist"
         click_button "Add Coupon Code"
-        page.should have_content("doesn't exist.")
+        expect(page).to have_content("doesn't exist.")
       end
     end
 
     context "for already applied promotion" do
-      it "should show an error message", :js => true do
-        fill_in "coupon_code", :with => "10_off"
+      it "should show an error message", js: true do
+        fill_in "coupon_code", with: "10_off"
         click_button "Add Coupon Code"
-        page.should have_content('-$10.00')
+        expect(page).to have_content('-$10.00')
 
-        fill_in "coupon_code", :with => "10_off"
+        fill_in "coupon_code", with: "10_off"
         click_button "Add Coupon Code"
-        page.should have_content("already been applied")
+        expect(page).to have_content("already been applied")
       end
     end
   end

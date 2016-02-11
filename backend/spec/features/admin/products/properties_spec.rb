@@ -1,85 +1,88 @@
 require 'spec_helper'
 
-describe "Properties" do
+describe "Properties", type: :feature, js: true do
   stub_authorization!
 
   before(:each) do
-    visit spree.admin_path
-    click_link "Products"
+    visit spree.admin_products_path
   end
 
   context "Property index" do
     before do
-      create(:property, :name => 'shirt size', :presentation => 'size')
-      create(:property, :name => 'shirt fit', :presentation => 'fit')
+      create(:property, name: 'shirt size', presentation: 'size')
+      create(:property, name: 'shirt fit', presentation: 'fit')
+      click_link "Products"
       click_link "Properties"
     end
 
     context "listing product properties" do
       it "should list the existing product properties" do
         within_row(1) do
-          column_text(1).should == "shirt size"
-          column_text(2).should == "size"
+          expect(column_text(1)).to eq("shirt size")
+          expect(column_text(2)).to eq("size")
         end
 
         within_row(2) do
-          column_text(1).should == "shirt fit"
-          column_text(2).should == "fit"
+          expect(column_text(1)).to eq("shirt fit")
+          expect(column_text(2)).to eq("fit")
         end
       end
     end
 
     context "searching properties" do
-      it 'should list properties matching search query', :js => true do
-        fill_in "q_name_cont", :with => "size"
-        click_icon :search
-
-        page.should have_content("shirt size")
-        page.should_not have_content("shirt fit")
+      it 'should list properties matching search query' do
+        click_on "Filter"
+        fill_in "q_name_cont", with: "size"
+        click_on 'Search'
+        
+        expect(page).to have_content("shirt size")
+        expect(page).not_to have_content("shirt fit")
       end
     end
   end
 
   context "creating a property" do
-    it "should allow an admin to create a new product property", :js => true do
+    it "should allow an admin to create a new product property", js: true do
+      click_link "Products"
       click_link "Properties"
       click_link "new_property_link"
-      within('#new_property') { page.should have_content("NEW PROPERTY") }
+      within('.content-header') { expect(page).to have_content("New Property") }
 
-      fill_in "property_name", :with => "color of band"
-      fill_in "property_presentation", :with => "color"
+      fill_in "property_name", with: "color of band"
+      fill_in "property_presentation", with: "color"
       click_button "Create"
-      page.should have_content("successfully created!")
+      expect(page).to have_content("successfully created!")
     end
   end
 
   context "editing a property" do
     before(:each) do
       create(:property)
+      click_link "Products"
       click_link "Properties"
       within_row(1) { click_icon :edit }
     end
 
     it "should allow an admin to edit an existing product property" do
-      fill_in "property_name", :with => "model 99"
+      fill_in "property_name", with: "model 99"
       click_button "Update"
-      page.should have_content("successfully updated!")
-      page.should have_content("model 99")
+      expect(page).to have_content("successfully updated!")
+      expect(page).to have_content("model 99")
     end
 
     it "should show validation errors" do
-      fill_in "property_name", :with => ""
+      fill_in "property_name", with: ""
       click_button "Update"
-      page.should have_content("Name can't be blank")
+      expect(page).to have_content("Name can't be blank")
     end
   end
 
-  context "linking a property to a product", :js => true do
+  context "linking a property to a product" do
     before do
       create(:product)
       visit spree.admin_products_path
       click_icon :edit
-      click_link "Product Properties"
+      click_link "Properties"
     end
 
     # Regression test for #2279
@@ -87,8 +90,8 @@ describe "Properties" do
       fill_in_property
       # Sometimes the page doesn't load before the all check is done
       # lazily finding the element gives the page 10 seconds
-      page.should have_css("tbody#product_properties tr:nth-child(2)")
-      all("tbody#product_properties tr").count.should == 2
+      expect(page).to have_css("tbody#product_properties tr:nth-child(2)")
+      expect(all("tbody#product_properties tr").count).to eq(2)
 
       delete_product_property
 
@@ -99,40 +102,39 @@ describe "Properties" do
     it "successfully remove and create a product property at the same time" do
       fill_in_property
 
-      fill_in "product_product_properties_attributes_1_property_name", :with => "New Property"
-      fill_in "product_product_properties_attributes_1_value", :with => "New Value"
+      fill_in "product_product_properties_attributes_1_property_name", with: "New Property"
+      fill_in "product_product_properties_attributes_1_value", with: "New Value"
 
       delete_product_property
 
       # Give fadeOut time to complete
-      page.should_not have_selector("#product_product_properties_attributes_0_property_name")
-      page.should_not have_selector("#product_product_properties_attributes_0_value")
+      expect(page).not_to have_selector("#product_product_properties_attributes_0_property_name")
+      expect(page).not_to have_selector("#product_product_properties_attributes_0_value")
 
       click_button "Update"
 
-      page.should_not have_content("Product is not found")
+      expect(page).not_to have_content("Product is not found")
 
       check_property_row_count(2)
     end
 
     def fill_in_property
-      page.should have_content('Editing Product')
-      fill_in "product_product_properties_attributes_0_property_name", :with => "A Property"
-      fill_in "product_product_properties_attributes_0_value", :with => "A Value"
+      fill_in "product_product_properties_attributes_0_property_name", with: "A Property"
+      fill_in "product_product_properties_attributes_0_value", with: "A Value"
       click_button "Update"
-      click_link "Product Properties"
+      click_link "Properties"
     end
 
     def delete_product_property
       page.evaluate_script('window.confirm = function() { return true; }')
-      click_icon :trash
+      click_icon :delete
       wait_for_ajax # delete action must finish before reloading
     end
 
     def check_property_row_count(expected_row_count)
-      click_link "Product Properties"
-      page.should have_css("tbody#product_properties")
-      all("tbody#product_properties tr").count.should == expected_row_count
+      click_link "Properties"
+      expect(page).to have_css("tbody#product_properties")
+      expect(all("tbody#product_properties tr").count).to eq(expected_row_count)
     end
   end
 end

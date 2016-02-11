@@ -18,9 +18,11 @@ module Spree
     end
 
     def create_profile(payment)
+      return if payment.source.has_payment_profile?
       # simulate the storage of credit card profile using remote service
-      success = VALID_CCS.include? payment.source.number
-      payment.source.update_attributes(:gateway_customer_profile_id => generate_profile_id(success))
+      if success = VALID_CCS.include?(payment.source.number)
+        payment.source.update_attributes(:gateway_customer_profile_id => generate_profile_id(success))
+      end
     end
 
     def authorize(money, credit_card, options = {})
@@ -56,6 +58,10 @@ module Spree
 
     def void(response_code, credit_card, options = {})
       ActiveMerchant::Billing::Response.new(true, 'Bogus Gateway: Forced success', {}, :test => true, :authorization => '12345')
+    end
+
+    def cancel(_response_code)
+      ActiveMerchant::Billing::Response.new(true, 'Bogus Gateway: Forced success', {}, test: true, authorization: '12345')
     end
 
     def test?

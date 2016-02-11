@@ -1,6 +1,6 @@
 require 'spec_helper'
 
-describe Spree::OrderContents do
+describe Spree::OrderContents, :type => :model do
   let(:order) { Spree::Order.create }
   let(:variant) { create(:variant) }
 
@@ -10,8 +10,8 @@ describe Spree::OrderContents do
     context 'given quantity is not explicitly provided' do
       it 'should add one line item' do
         line_item = subject.add(variant)
-        line_item.quantity.should == 1
-        order.line_items.size.should == 1
+        expect(line_item.quantity).to eq(1)
+        expect(order.line_items.size).to eq(1)
       end
     end
 
@@ -20,7 +20,7 @@ describe Spree::OrderContents do
         shipment = create(:shipment)
         expect(subject.order).to_not receive(:ensure_updated_shipments)
         expect(shipment).to receive(:update_amounts)
-        subject.add(variant, 1, nil, shipment)
+        subject.add(variant, 1, shipment: shipment)
       end
     end
 
@@ -33,25 +33,25 @@ describe Spree::OrderContents do
 
     it 'should add line item if one does not exist' do
       line_item = subject.add(variant, 1)
-      line_item.quantity.should == 1
-      order.line_items.size.should == 1
+      expect(line_item.quantity).to eq(1)
+      expect(order.line_items.size).to eq(1)
     end
 
     it 'should update line item if one exists' do
       subject.add(variant, 1)
       line_item = subject.add(variant, 1)
-      line_item.quantity.should == 2
-      order.line_items.size.should == 1
+      expect(line_item.quantity).to eq(2)
+      expect(order.line_items.size).to eq(1)
     end
 
     it "should update order totals" do
-      order.item_total.to_f.should == 0.00
-      order.total.to_f.should == 0.00
+      expect(order.item_total.to_f).to eq(0.00)
+      expect(order.total.to_f).to eq(0.00)
 
       subject.add(variant, 1)
 
-      order.item_total.to_f.should == 19.99
-      order.total.to_f.should == 19.99
+      expect(order.item_total.to_f).to eq(19.99)
+      expect(order.total.to_f).to eq(19.99)
     end
 
     context "running promotions" do
@@ -84,6 +84,35 @@ describe Spree::OrderContents do
 
         include_context "discount changes order total"
       end
+
+      context "VAT for variant with percent promotion" do
+        let!(:category) { Spree::TaxCategory.create name: "Taxable Foo" }
+        let!(:rate) do
+          Spree::TaxRate.create(
+            amount: 0.25,
+            included_in_price: true,
+            calculator: Spree::Calculator::DefaultTax.create,
+            tax_category: category,
+            zone: create(:zone_with_country, default_tax: true)
+          )
+        end
+        let(:variant) { create(:variant, price: 1000) }
+        let(:calculator) { Spree::Calculator::PercentOnLineItem.new(:preferred_percent => 50) }
+        let!(:action) { Spree::Promotion::Actions::CreateItemAdjustments.create(promotion: promotion, calculator: calculator) }
+
+        it "should update included_tax_total" do
+          expect(order.included_tax_total.to_f).to eq(0.00)
+          subject.add(variant, 1)
+          expect(order.included_tax_total.to_f).to eq(100)
+        end
+
+        it "should update included_tax_total after adding two line items" do
+          subject.add(variant, 1)
+          expect(order.included_tax_total.to_f).to eq(100)
+          subject.add(variant, 1)
+          expect(order.included_tax_total.to_f).to eq(200)
+        end
+      end
     end
   end
 
@@ -101,7 +130,7 @@ describe Spree::OrderContents do
         line_item = subject.add(variant, 3)
         subject.remove(variant)
 
-        line_item.reload.quantity.should == 2
+        expect(line_item.quantity).to eq(2)
       end
     end
 
@@ -111,7 +140,7 @@ describe Spree::OrderContents do
         shipment = create(:shipment)
         expect(subject.order).to_not receive(:ensure_updated_shipments)
         expect(shipment).to receive(:update_amounts)
-        subject.remove(variant, 1, shipment)
+        subject.remove(variant, 1, shipment: shipment)
       end
     end
 
@@ -127,28 +156,29 @@ describe Spree::OrderContents do
       line_item = subject.add(variant, 3)
       subject.remove(variant, 1)
 
-      line_item.reload.quantity.should == 2
+      expect(line_item.quantity).to eq(2)
     end
 
     it 'should remove line_item if quantity matches line_item quantity' do
       subject.add(variant, 1)
-      subject.remove(variant, 1)
+      removed_line_item = subject.remove(variant, 1)
 
-      order.reload.find_line_item_by_variant(variant).should be_nil
+      # Should reflect the change already in Order#line_item
+      expect(order.line_items).to_not include(removed_line_item)
     end
 
     it "should update order totals" do
-      order.item_total.to_f.should == 0.00
-      order.total.to_f.should == 0.00
+      expect(order.item_total.to_f).to eq(0.00)
+      expect(order.total.to_f).to eq(0.00)
 
       subject.add(variant,2)
 
-      order.item_total.to_f.should == 39.98
-      order.total.to_f.should == 39.98
+      expect(order.item_total.to_f).to eq(39.98)
+      expect(order.total.to_f).to eq(39.98)
 
       subject.remove(variant,1)
-      order.item_total.to_f.should == 19.99
-      order.total.to_f.should == 19.99
+      expect(order.item_total.to_f).to eq(19.99)
+      expect(order.total.to_f).to eq(19.99)
     end
   end
 
@@ -163,7 +193,7 @@ describe Spree::OrderContents do
 
     it "changes item quantity" do
       subject.update_cart params
-      expect(shirt.reload.quantity).to eq 3
+      expect(shirt.quantity).to eq 3
     end
 
     it "updates order totals" do
@@ -175,7 +205,8 @@ describe Spree::OrderContents do
     context "submits item quantity 0" do
       let(:params) do
         { line_items_attributes: {
-          "0" => { id: shirt.id, quantity: 0 }
+          "0" => { id: shirt.id, quantity: 0 },
+          "1" => { id: "666", quantity: 0}
         } }
       end
 
@@ -184,6 +215,21 @@ describe Spree::OrderContents do
           subject.update_cart params
         }.to change { subject.order.line_items.count }
       end
+
+      it "doesnt try to update unexistent items" do
+        filtered_params = { line_items_attributes: {
+          "0" => { id: shirt.id, quantity: 0 },
+        } }
+        expect(subject.order).to receive(:update_attributes).with(filtered_params)
+        subject.update_cart params
+      end
+
+      it "should not filter if there is only one line item" do
+        single_line_item_params = { line_items_attributes: { id: shirt.id, quantity: 0 } }
+        expect(subject.order).to receive(:update_attributes).with(single_line_item_params)
+        subject.update_cart single_line_item_params
+      end
+
     end
 
     it "ensures updated shipments" do
@@ -193,7 +239,7 @@ describe Spree::OrderContents do
   end
 
   context "completed order" do
-    let(:order) { Spree::Order.create! state: 'complete', completed_at: Time.now }
+    let(:order) { create(:order, state: 'complete', completed_at: Time.now) }
 
     before { order.shipments.create! stock_location_id: variant.stock_location_ids.first }
 

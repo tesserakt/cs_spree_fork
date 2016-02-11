@@ -2,8 +2,8 @@ module Spree
   module Api
     class ProductPropertiesController < Spree::Api::BaseController
 
-      before_filter :find_product
-      before_filter :product_property, only: [:show, :update, :destroy]
+      before_action :find_product
+      before_action :product_property, only: [:show, :update, :destroy]
 
       def index
         @product_properties = @product.product_properties.accessible_by(current_ability, :read).
@@ -20,7 +20,7 @@ module Spree
       end
 
       def create
-        authorize! :create, ProductProperty
+        authorize! :create, Spree::ProductProperty
         @product_property = @product.product_properties.new(product_property_params)
         if @product_property.save
           respond_with(@product_property, status: 201, default_template: :show)

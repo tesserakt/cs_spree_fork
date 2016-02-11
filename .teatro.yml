@@ -2,17 +2,16 @@ stage:
   before:
     - export SECRET_KEY_BASE=abc
     - bundle exec rake sandbox
-    - echo 'Rails.logger = Logger.new(STDOUT)' > sandbox/config/initializers/logger_stdout.rb
     - cd sandbox
     - ln -sf $PWD/public $PWD/../public
+    - cp ../config/initializers/teatro_patches.rb config/initializers/
 
   run:
-    # pwd is sanbox
+    # workdir is sandbox
     - bundle exec rails server
 
   database:
-    # actually do nothing (and prevent default Teatro behavior): `rake sandbox` already did everything
-    - true
+    - echo "skip database stage. rake sandbox already did everything"
 
 config:
   database: postgresql

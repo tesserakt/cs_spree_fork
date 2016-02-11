@@ -46,16 +46,19 @@ adjustLineItem = (line_item_id, quantity) ->
     data:
       line_item:
         quantity: quantity
+      token: Spree.api_key
   ).done (msg) ->
-    advanceOrder()
+    window.Spree.advanceOrder()
 
 deleteLineItem = (line_item_id) ->
   url = lineItemURL(line_item_id)
   $.ajax(
     type: "DELETE"
     url: Spree.url(url)
+    data:
+      token: Spree.api_key
   ).done (msg) ->
     $('#line-item-' + line_item_id).remove()
     if $('.line-items tr.line-item').length == 0
       $('.line-items').remove()
-    advanceOrder()
+    window.Spree.advanceOrder()

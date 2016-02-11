@@ -57,9 +57,11 @@ end
 
 RSpec.configure do |config|
   config.color = true
-  config.mock_with :rspec
-
+  config.fail_fast = ENV['FAIL_FAST'] || false
   config.fixture_path = File.join(File.expand_path(File.dirname(__FILE__)), "fixtures")
+  config.infer_spec_type_from_file_location!
+  config.mock_with :rspec
+  config.raise_errors_for_deprecations!
 
   # If you're not using ActiveRecord, or you'd prefer not to run each of your
   # examples within a transaction, comment the following line or assign false
@@ -72,9 +74,16 @@ RSpec.configure do |config|
     end
   end
 
+  # Ensure DB is clean, so that transaction isolated specs see
+  # pristine state.
+  config.before(:suite) do
+    DatabaseCleaner.strategy = :truncation
+    DatabaseCleaner.clean
+  end
+
   config.before(:each) do
     WebMock.disable!
-    if example.metadata[:js]
+    if RSpec.current_example.metadata[:js]
       DatabaseCleaner.strategy = :truncation
     else
       DatabaseCleaner.strategy = :transaction
@@ -92,10 +101,9 @@ RSpec.configure do |config|
     DatabaseCleaner.clean
   end
 
-  config.after(:each, :type => :feature) do
+  config.after(:each, :type => :feature) do |example|
     missing_translations = page.body.scan(/translation missing: #{I18n.locale}\.(.*?)[\s<\"&]/)
     if missing_translations.any?
-      #binding.pry
       puts "Found missing translations: #{missing_translations.inspect}"
       puts "In spec: #{example.location}"
     end
@@ -106,10 +114,8 @@ RSpec.configure do |config|
 
   config.include Spree::TestingSupport::Preferences
   config.include Spree::TestingSupport::UrlHelpers
-  config.include Spree::TestingSupport::ControllerRequests
+  config.include Spree::TestingSupport::ControllerRequests, type: :controller
   config.include Spree::TestingSupport::Flash
 
   config.include Paperclip::Shoulda::Matchers
-
-  config.fail_fast = ENV['FAIL_FAST'] || false
 end

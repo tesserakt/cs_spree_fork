@@ -1,6 +1,6 @@
 require 'spec_helper'
 
-describe Spree::Admin::ReimbursementsController do
+describe Spree::Admin::ReimbursementsController, :type => :controller do
   stub_authorization!
 
   let!(:default_refund_reason) do
@@ -13,53 +13,18 @@ describe Spree::Admin::ReimbursementsController do
     let(:return_item) { customer_return.return_items.first }
     let(:payment) { order.payments.first }
 
-    before do
-      customer_return.return_items.map(&:accept!)
+    subject do
+      spree_post :create, order_id: order.to_param, build_from_customer_return_id: customer_return.id
     end
 
-    context "nested attributes" do
-      let(:reimbursement_params) do
-        {
-          customer_return_id: customer_return.to_param,
-          return_item_ids: [return_item.id],
-        }
-      end
-
-      subject do
-        spree_post :create, order_id: order.to_param, reimbursement: reimbursement_params
-      end
-
-      it 'creates the reimbursement' do
-        expect { subject }.to change { order.reimbursements.count }.by(1)
-        expect(assigns(:reimbursement).return_items).to include(return_item)
-      end
-
-      it 'redirects to the edit page' do
-        subject
-        expect(response).to redirect_to(spree.edit_admin_order_reimbursement_path(order, assigns(:reimbursement)))
-      end
+    it 'creates the reimbursement' do
+      expect { subject }.to change { order.reimbursements.count }.by(1)
+      expect(assigns(:reimbursement).return_items.to_a).to eq customer_return.return_items.to_a
     end
 
-    context "comma separated ids" do
-      let(:customer_return)    { create(:customer_return, line_items_count: 2) }
-      let(:second_return_item) { customer_return.return_items.last }
-      let(:return_item_ids)    { [return_item.id, second_return_item.id].join(',') }
-
-      let(:reimbursement_params) do
-        {
-          customer_return_id: customer_return.to_param,
-        }
-      end
-
-      subject do
-        spree_post :create, order_id: order.to_param, reimbursement: reimbursement_params, return_item_ids: return_item_ids
-      end
-
-      it 'creates the reimbursement' do
-        expect { subject }.to change { order.reimbursements.count }.by(1)
-        expect(assigns(:reimbursement).return_items).to include(return_item)
-        expect(assigns(:reimbursement).return_items).to include(second_return_item)
-      end
+    it 'redirects to the edit page' do
+      subject
+      expect(response).to redirect_to(spree.edit_admin_order_reimbursement_path(order, assigns(:reimbursement)))
     end
   end
 
@@ -76,7 +41,7 @@ describe Spree::Admin::ReimbursementsController do
 
     it 'redirects to customer return page' do
       subject
-      expect(response).to redirect_to spree.admin_order_customer_return_path(order, customer_return)
+      expect(response).to redirect_to spree.admin_order_reimbursement_path(order, reimbursement)
     end
 
     it 'performs the reimbursement' do
@@ -85,6 +50,25 @@ describe Spree::Admin::ReimbursementsController do
       }.to change { payment.refunds.count }.by(1)
       expect(payment.refunds.last.amount).to be > 0
       expect(payment.refunds.last.amount).to eq return_items.to_a.sum(&:total)
+    end
+
+    context "a Spree::Core::GatewayError is raised" do
+      before(:each) do
+        def controller.perform
+          raise Spree::Core::GatewayError.new('An error has occurred')
+        end
+      end
+
+      it "sets an error message with the correct text" do
+        subject
+        expect(flash[:error]).to eq 'An error has occurred'
+      end
+
+      it 'redirects to the edit page' do
+        subject
+        redirect_path = spree.edit_admin_order_reimbursement_path(order, assigns(:reimbursement))
+        expect(response).to redirect_to(redirect_path)
+      end
     end
   end
 end

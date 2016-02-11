@@ -3,9 +3,9 @@ module Spree
     class VariantsController < ResourceController
       belongs_to 'spree/product', :find_by => :slug
       new_action.before :new_before
-      before_filter :load_data, :only => [:new, :create, :edit, :update]
+      before_action :load_data, only: [:new, :create, :edit, :update]
 
-      # override the destory method to set deleted_at value
+      # override the destroy method to set deleted_at value
       # instead of actually deleting the product.
       def destroy
         @variant = Variant.find(params[:id])
@@ -33,7 +33,7 @@ module Spree
           @deleted = (params.key?(:deleted) && params[:deleted] == "on") ? "checked" : ""
 
           if @deleted.blank?
-            @collection ||= super
+            @collection ||= super.includes(:default_price, option_values: :option_type)
           else
             @collection ||= Variant.only_deleted.where(:product_id => parent.id)
           end

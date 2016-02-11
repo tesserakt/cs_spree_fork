@@ -1,65 +1,63 @@
 require 'spec_helper'
 
-describe "Payment Methods" do
+describe "Payment Methods", type: :feature do
   stub_authorization!
 
   before(:each) do
-    visit spree.admin_path
-    click_link "Configuration"
+    visit spree.admin_payment_methods_path
   end
 
   context "admin visiting payment methods listing page" do
     it "should display existing payment methods" do
       create(:check_payment_method)
-      click_link "Payment Methods"
+      visit current_path
 
       within("table#listing_payment_methods") do
-        all("th")[0].text.should == "Name"
-        all("th")[1].text.should == "Provider"
-        all("th")[2].text.should == "Environment"
-        all("th")[3].text.should == "Display"
-        all("th")[4].text.should == "Active"
+        expect(all("th")[0].text).to eq("Name")
+        expect(all("th")[1].text).to eq("Provider")
+        expect(all("th")[2].text).to eq("Display")
+        expect(all("th")[3].text).to eq("Active")
       end
 
       within('table#listing_payment_methods') do
-        page.should have_content("Spree::PaymentMethod::Check")
+        expect(page).to have_content("Spree::PaymentMethod::Check")
       end
     end
   end
 
   context "admin creating a new payment method" do
     it "should be able to create a new payment method" do
-      click_link "Payment Methods"
       click_link "admin_new_payment_methods_link"
-      page.should have_content("New Payment Method")
-      fill_in "payment_method_name", :with => "check90"
-      fill_in "payment_method_description", :with => "check90 desc"
-      select "PaymentMethod::Check", :from => "gtwy-type"
+      expect(page).to have_content("New Payment Method")
+      fill_in "payment_method_name", with: "check90"
+      fill_in "payment_method_description", with: "check90 desc"
+      select "PaymentMethod::Check", from: "gtwy-type"
       click_button "Create"
-      page.should have_content("successfully created!")
+      expect(page).to have_content("successfully created!")
     end
   end
 
-  context "admin editing a payment method" do
+  context "admin editing a payment method", js: true do
     before(:each) do
       create(:check_payment_method)
-      click_link "Payment Methods"
+      visit current_path
+
       within("table#listing_payment_methods") do
         click_icon(:edit)
       end
     end
 
     it "should be able to edit an existing payment method" do
-      fill_in "payment_method_name", :with => "Payment 99"
+      fill_in "payment_method_name", with: "Payment 99"
       click_button "Update"
-      page.should have_content("successfully updated!")
-      find_field("payment_method_name").value.should == "Payment 99"
+      expect(page).to have_content("successfully updated!")
+      expect(find_field("payment_method_name").value).to eq("Payment 99")
     end
 
     it "should display validation errors" do
-      fill_in "payment_method_name", :with => ""
+      fill_in "payment_method_name", with: ""
       click_button "Update"
-      page.should have_content("Name can't be blank")
+      expect(page).to have_content("Name can't be blank")
     end
   end
 end

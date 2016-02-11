@@ -3,10 +3,10 @@ module Spree
     class PaymentsController < Spree::Admin::BaseController
       include Spree::Backend::Callbacks
 
-      before_filter :load_order, :only => [:create, :new, :index, :fire]
-      before_filter :load_payment, :except => [:create, :new, :index]
-      before_filter :load_data
-      before_filter :can_transition_to_payment
+      before_action :load_order, only: [:create, :new, :index, :fire]
+      before_action :load_payment, except: [:create, :new, :index]
+      before_action :load_data
+      before_action :can_not_transition_without_customer_info
 
       respond_to :html
 
@@ -23,7 +23,7 @@ module Spree
       def create
         invoke_callbacks(:create, :before)
         @payment ||= @order.payments.build(object_params)
-        if params[:card].present? and params[:card] != 'new'
+        if @payment.payment_method.source_required? && params[:card].present? and params[:card] != 'new'
           @payment.source = @payment.payment_method.payment_source_class.find_by_id(params[:card])
         end
 
@@ -71,7 +71,7 @@ module Spree
         if params[:payment] and params[:payment_source] and source_params = params.delete(:payment_source)[params[:payment][:payment_method_id]]
           params[:payment][:source_attributes] = source_params
         end
-        
+
         params.require(:payment).permit(permitted_payment_attributes)
       end
 
@@ -85,21 +85,14 @@ module Spree
         end
       end
 
-      def can_transition_to_payment
-        unless @order.billing_address.present?
-          flash[:notice] = Spree.t(:fill_in_customer_info)
-          redirect_to edit_admin_order_customer_url(@order)
-        end
-      end
-
       def load_order
-        @order = Order.find_by_number!(params[:order_id])
+        @order = Order.friendly.find(params[:order_id])
         authorize! action, @order
         @order
       end
 
       def load_payment
-        @payment = Payment.find(params[:id])
+        @payment = Payment.friendly.find(params[:id])
       end
 
       def model_class

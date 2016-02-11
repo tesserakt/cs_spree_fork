@@ -25,8 +25,13 @@ module Spree
             next unless stock_location.stock_item(variant)
 
             on_hand, backordered = stock_location.fill_status(variant, units.count)
-            package.add_multiple units.slice!(0, on_hand), :on_hand if on_hand > 0
-            package.add_multiple units.slice!(0, backordered), :backordered if backordered > 0
+            if package.number_i_can_fulfill_on_hand_by_variant[variant.id].nil?
+              package.number_i_can_fulfill_on_hand_by_variant[variant.id] = on_hand
+            end
+
+            if package.number_i_can_fulfill_backordered_by_variant[variant.id].nil?
+              package.number_i_can_fulfill_backordered_by_variant[variant.id] = backordered
+            end
           else
             package.add_multiple units
           end

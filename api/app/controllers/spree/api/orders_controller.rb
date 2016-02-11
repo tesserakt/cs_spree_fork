@@ -1,13 +1,13 @@
 module Spree
   module Api
     class OrdersController < Spree::Api::BaseController
-      skip_before_filter :check_for_user_or_api_key, only: :apply_coupon_code
-      skip_before_filter :authenticate_user, only: :apply_coupon_code
+      skip_before_action :check_for_user_or_api_key, only: :apply_coupon_code
+      skip_before_action :authenticate_user, only: :apply_coupon_code
 
-      before_filter :find_order, except: [:create, :mine, :current, :index, :update]
+      before_action :find_order, except: [:create, :mine, :current, :index, :update]
 
       # Dynamically defines our stores checkout steps to ensure we check authorization on each step.
-      Order.checkout_steps.keys.each do |step|
+      Spree::Order.checkout_steps.keys.each do |step|
         define_method step do
           find_order
           authorize! :update, @order, params[:token]
@@ -17,11 +17,11 @@ module Spree
       def cancel
         authorize! :update, @order, params[:token]
         @order.cancel!
-        render :show
+        respond_with(@order, :default_template => :show)
       end
 
       def create
-        authorize! :create, Order
+        authorize! :create, Spree::Order
         order_user = if @current_user_roles.include?('admin') && order_params[:user_id]
           Spree.user_class.find(order_params[:user_id])
         else
@@ -29,7 +29,7 @@ module Spree
         end
 
         import_params = if @current_user_roles.include?("admin")
-          params[:order].permit!
+          params[:order].present? ? params[:order].permit! : {}
         else
           order_params
         end
@@ -46,7 +46,7 @@ module Spree
 
       def index
         authorize! :index, Order
-        @orders = Order.ransack(params[:q]).result.page(params[:page]).per(params[:per_page])
+        @orders = Spree::Order.ransack(params[:q]).result.page(params[:page]).per(params[:per_page])
         respond_with(@orders)
       end
 
@@ -91,7 +91,7 @@ module Spree
         find_order
         authorize! :update, @order, order_token
         @order.coupon_code = params[:coupon_code]
-        @handler = PromotionHandler::Coupon.new(@order).apply
+        @handler = Spree::PromotionHandler::Coupon.new(@order).apply
         status = @handler.successful? ? 200 : 422
         render "spree/api/promotions/handler", :status => status
       end
@@ -115,7 +115,7 @@ module Spree
         end
 
         def find_order(lock = false)
-          @order = Spree::Order.lock(lock).find_by!(number: params[:id])
+          @order = Spree::Order.lock(lock).friendly.find(params[:id])
         end
 
         def find_current_order

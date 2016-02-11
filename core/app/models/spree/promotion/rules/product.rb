@@ -21,17 +21,33 @@ module Spree
 
         def eligible?(order, options = {})
           return true if eligible_products.empty?
+
           if preferred_match_policy == 'all'
-            eligible_products.all? {|p| order.products.include?(p) }
+            unless eligible_products.all? {|p| order.products.include?(p) }
+              eligibility_errors.add(:base, eligibility_error_message(:missing_product))
+            end
           elsif preferred_match_policy == 'any'
-            order.products.any? {|p| eligible_products.include?(p) }
+            unless order.products.any? {|p| eligible_products.include?(p) }
+              eligibility_errors.add(:base, eligibility_error_message(:no_applicable_products))
+            end
           else
-            order.products.none? {|p| eligible_products.include?(p) }
+            unless order.products.none? {|p| eligible_products.include?(p) }
+              eligibility_errors.add(:base, eligibility_error_message(:has_excluded_product))
+            end
           end
+
+          eligibility_errors.empty?
         end
 
         def actionable?(line_item)
-          product_ids.include? line_item.variant.product_id
+          case preferred_match_policy
+          when 'any', 'all'
+            product_ids.include? line_item.variant.product_id
+          when 'none'
+            product_ids.exclude? line_item.variant.product_id
+          else
+            raise "unexpected match policy: #{preferred_match_policy.inspect}"
+          end
         end
 
         def product_ids_string

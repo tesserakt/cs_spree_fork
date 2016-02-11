@@ -4,6 +4,10 @@ module Spree
       isolate_namespace Spree
       engine_name 'spree'
 
+      rake_tasks do
+        load File.join(root, "lib", "tasks", "exchanges.rake")
+      end
+
       initializer "spree.environment", :before => :load_config_initializers do |app|
         app.config.spree = Spree::Core::Environment.new
         Spree::Config = app.config.spree.preferences #legacy access
@@ -48,7 +52,9 @@ module Spree
         app.config.spree.calculators.promotion_actions_create_adjustments = [
           Spree::Calculator::FlatPercentItemTotal,
           Spree::Calculator::FlatRate,
-          Spree::Calculator::FlexiRate
+          Spree::Calculator::FlexiRate,
+          Spree::Calculator::TieredPercent,
+          Spree::Calculator::TieredFlatRate
         ]
 
         app.config.spree.calculators.add_class('promotion_actions_create_item_adjustments')
@@ -70,7 +76,10 @@ module Spree
           Spree::Promotion::Rules::User,
           Spree::Promotion::Rules::FirstOrder,
           Spree::Promotion::Rules::UserLoggedIn,
-          Spree::Promotion::Rules::OneUsePerUser]
+          Spree::Promotion::Rules::OneUsePerUser,
+          Spree::Promotion::Rules::Taxon,
+          Spree::Promotion::Rules::OptionValue
+        ]
       end
 
       initializer 'spree.promo.register.promotions.actions' do |app|
@@ -92,6 +101,13 @@ module Spree
 
       initializer "spree.core.checking_migrations" do |app|
         Migrations.new(config, engine_name).check
+      end
+
+      config.to_prepare do
+        # Load application's model / class decorators
+        Dir.glob(File.join(File.dirname(__FILE__), '../../../app/**/*_decorator*.rb')) do |c|
+          Rails.configuration.cache_classes ? require(c) : load(c)
+        end
       end
     end
   end

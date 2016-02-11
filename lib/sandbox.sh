@@ -9,17 +9,15 @@ if [ ! -d "sandbox" ]; then
 fi
 
 cd ./sandbox
-echo "gem 'spree', :path => '..'" >> Gemfile
-echo "gem 'spree_auth_devise', :github => 'spree/spree_auth_devise', :branch => 'master'" >> Gemfile
 
 cat <<RUBY >> Gemfile
+gem 'spree', path: '..'
+gem 'spree_auth_devise', github: 'spree/spree_auth_devise', branch: '3-0-stable'
+
 group :test, :development do
-  platforms :ruby_19 do
-    gem 'pry-debugger'
-  end
-  platforms :ruby_20, :ruby_21 do
-    gem 'pry-byebug'
-  end
+  gem 'bullet'
+  gem 'pry-byebug'
+  gem 'rack-mini-profiler'
 end
 RUBY
 

@@ -1,10 +1,12 @@
 module Spree
   module Admin
     class RefundsController < ResourceController
-      belongs_to 'spree/payment'
-      before_filter :load_order
+      belongs_to 'spree/payment', find_by: :number
+      before_action :load_order
 
       helper_method :refund_reasons
+
+      rescue_from Spree::Core::GatewayError, with: :spree_core_gateway_error, only: :create
 
       private
 
@@ -25,6 +27,11 @@ module Spree
         super.tap do |refund|
           refund.amount = refund.payment.credit_allowed
         end
+      end
+
+      def spree_core_gateway_error(error)
+        flash[:error] = error.message
+        render :new
       end
     end
   end

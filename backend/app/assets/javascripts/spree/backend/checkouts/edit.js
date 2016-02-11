@@ -19,7 +19,10 @@ $(document).ready(function() {
         url: Spree.routes.user_search,
         datatype: 'json',
         data: function(term, page) {
-          return { q: term }
+          return {
+            q: term,
+            token: Spree.api_key
+          }
         },
         results: function(data, page) {
           return { results: data }
@@ -34,6 +37,22 @@ $(document).ready(function() {
         $('#guest_checkout_false').prop("checked", true);
         $('#guest_checkout_false').prop("disabled", false);
 
+        var billAddress = customer.bill_address;
+        if(billAddress) {
+          $('#order_bill_address_attributes_firstname').val(billAddress.firstname);
+          $('#order_bill_address_attributes_lastname').val(billAddress.lastname);
+          $('#order_bill_address_attributes_address1').val(billAddress.address1);
+          $('#order_bill_address_attributes_address2').val(billAddress.address2);
+          $('#order_bill_address_attributes_city').val(billAddress.city);
+          $('#order_bill_address_attributes_zipcode').val(billAddress.zipcode);
+          $('#order_bill_address_attributes_phone').val(billAddress.phone);
+
+          $('#order_bill_address_attributes_country_id').select2("val", billAddress.country_id).promise().done(function () {
+            update_state('b', function () {
+              $('#order_bill_address_attributes_state_id').select2("val", billAddress.state_id);
+            });
+          });
+        }
         return customer.email;
       }
     })

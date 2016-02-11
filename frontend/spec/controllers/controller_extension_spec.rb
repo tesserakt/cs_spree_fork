@@ -18,9 +18,18 @@ class Spree::CustomController < Spree::BaseController
   end
 end
 
-describe Spree::CustomController do
+describe Spree::CustomController, :type => :controller do
   after do
     Spree::CustomController.clear_overrides!
+  end
+
+  before do
+    @routes = ActionDispatch::Routing::RouteSet.new.tap do |r|
+      r.draw {
+        get 'index', to: 'spree/custom#index'
+        post 'create', to: 'spree/custom#create'
+      }
+    end
   end
 
   context "extension testing" do
@@ -37,10 +46,11 @@ describe Spree::CustomController do
             end
           end
         end
+
         describe "GET" do
           it "has value success" do
             spree_get :index
-            response.should be_success
+            expect(response).to be_success
             assert (response.body =~ /success!!!/)
           end
         end
@@ -53,10 +63,11 @@ describe Spree::CustomController do
             respond_override({:index => {:html => {:failure => lambda { render(:text => 'failure!!!') }}}})
           end
         end
+
         describe "GET" do
           it "has value success" do
             spree_get :index
-            response.should be_success
+            expect(response).to be_success
             assert (response.body =~ /success!!!/)
           end
         end
@@ -69,10 +80,11 @@ describe Spree::CustomController do
             respond_override({:index => {:html => {:failure => lambda { render(:text => 'failure!!!') }}}})
           end
         end
+
         describe "GET" do
           it "has value success" do
             spree_get :index
-            response.should be_redirect
+            expect(response).to be_redirect
           end
         end
       end
@@ -89,7 +101,7 @@ describe Spree::CustomController do
         describe "POST" do
           it "has value success" do
             spree_post :create
-            response.should be_success
+            expect(response).to be_success
             assert (response.body =~ /success!/)
           end
         end
@@ -101,6 +113,7 @@ describe Spree::CustomController do
             respond_override({:index => {:html => {:success => lambda { render(:text => 'success!!!') }}}})
           end
         end
+
         describe "POST" do
           it "should not effect the wrong controller" do
             spree_get :index
@@ -108,8 +121,6 @@ describe Spree::CustomController do
           end
         end
       end
-
     end
   end
-
 end

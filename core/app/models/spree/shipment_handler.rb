@@ -9,14 +9,14 @@ module Spree
           sm_handler.new(shipment)
         else
           new(shipment)
-        end        
+        end
       end
     end
-    
+
     def initialize(shipment)
       @shipment = shipment
     end
-    
+
     def perform
       @shipment.inventory_units.each &:ship!
       @shipment.process_order_payments if Spree::Config[:auto_capture_on_dispatch]
@@ -27,12 +27,12 @@ module Spree
 
     private
       def send_shipped_email
-        ShipmentMailer.shipped_email(@shipment.id).deliver
+        ShipmentMailer.shipped_email(@shipment.id).deliver_later
       end
-  
+
       def update_order_shipment_state
         order = @shipment.order
-  
+
         new_state = OrderUpdater.new(order).update_shipment_state
         order.update_columns(
                              shipment_state: new_state,

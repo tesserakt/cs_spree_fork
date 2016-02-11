@@ -1,19 +1,19 @@
 module Spree
   module Admin
     class StockTransfersController < Admin::BaseController
-      before_filter :load_stock_locations, :only => :index
+      before_action :load_stock_locations, only: :index
 
       def index
         @q = StockTransfer.ransack(params[:q])
 
-        @stock_transfers = @q.result
-                             .includes(:stock_movements => { :stock_item => :stock_location })
-                             .order('created_at DESC')
-                             .page(params[:page])
+        @stock_transfers = @q.result.
+                             includes(stock_movements: { stock_item: :stock_location }).
+                             order('created_at DESC').
+                             page(params[:page])
       end
 
       def show
-        @stock_transfer = StockTransfer.find_by_param(params[:id])
+        @stock_transfer = StockTransfer.friendly.find(params[:id])
       end
 
       def new
@@ -26,7 +26,7 @@ module Spree
           variants[variant_id] += params[:quantity][i].to_i
         end
 
-        stock_transfer = StockTransfer.create(:reference => params[:reference])
+        stock_transfer = StockTransfer.create(reference: params[:reference])
         stock_transfer.transfer(source_location,
                                 destination_location,
                                 variants)

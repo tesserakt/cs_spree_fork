@@ -1,15 +1,14 @@
 Spree::Core::Engine.add_routes do
-  get '/admin', :to => 'admin/orders#index', :as => :admin
-
   namespace :admin do
-    get '/search/users', :to => "search#users", :as => :search_users
+    get '/search/users', to: "search#users", as: :search_users
+    get '/search/products', to: "search#products", as: :search_products
 
     resources :promotions do
       resources :promotion_rules
       resources :promotion_actions
     end
 
-    resources :promotion_categories, :except => [:show]
+    resources :promotion_categories, except: [:show]
 
     resources :zones
 
@@ -39,10 +38,10 @@ Spree::Core::Engine.add_routes do
           post :update_positions
         end
       end
-      resources :variants_including_master, :only => [:update]
+      resources :variants_including_master, only: [:update]
     end
 
-    get '/variants/search', :to => "variants#search", :as => :search_variants
+    get '/variants/search', to: "variants#search", as: :search_variants
 
     resources :option_types do
       collection do
@@ -51,7 +50,7 @@ Spree::Core::Engine.add_routes do
       end
     end
 
-    delete '/option_values/:id', :to => "option_values#destroy", :as => :option_value
+    delete '/option_values/:id', to: "option_values#destroy", as: :option_value
 
     resources :properties do
       collection do
@@ -59,7 +58,7 @@ Spree::Core::Engine.add_routes do
       end
     end
 
-    delete '/product_properties/:id', :to => "product_properties#destroy", :as => :product_property
+    delete '/product_properties/:id', to: "product_properties#destroy", as: :product_property
 
     resources :prototypes do
       member do
@@ -71,8 +70,9 @@ Spree::Core::Engine.add_routes do
       end
     end
 
-    resources :orders, :except => [:show] do
+    resources :orders, except: [:show] do
       member do
+        get :cart
         post :resend
         get :open_adjustments
         get :close_adjustments
@@ -81,15 +81,16 @@ Spree::Core::Engine.add_routes do
         put :resume
       end
 
-      resource :customer, :controller => "orders/customer_details"
-      resources :customer_returns, only: [:index, :show, :new, :create, :update] do
+      resources :state_changes, only: [:index]
+
+      resource :customer, controller: "orders/customer_details"
+      resources :customer_returns, only: [:index, :new, :edit, :create, :update] do
         member do
           put :refund
         end
       end
 
       resources :adjustments
-      resources :line_items
       resources :return_authorizations do
         member do
           put :fire
@@ -101,10 +102,10 @@ Spree::Core::Engine.add_routes do
         end
 
         resources :log_entries
-        resources :refunds, only: [:new, :edit, :create, :update]
+        resources :refunds, only: [:new, :create, :edit, :update]
       end
 
-      resources :reimbursements, only: [:create, :edit] do
+      resources :reimbursements, only: [:index, :create, :show, :edit, :update] do
         member do
           post :perform
         end
@@ -113,7 +114,7 @@ Spree::Core::Engine.add_routes do
 
     resource :general_settings do
       collection do
-        post :dismiss_alert
+        post :clear_cache
       end
     end
 
@@ -123,43 +124,42 @@ Spree::Core::Engine.add_routes do
       collection do
         post :update_positions
       end
-      member do
-        get :get_children
-      end
       resources :taxons
     end
 
-    resources :taxons, :only => [:index, :show] do
+    resources :taxons, only: [:index, :show] do
       collection do
         get :search
       end
     end
 
-    resources :reports, :only => [:index] do
+    resources :reports, only: [:index] do
       collection do
         get :sales_total
         post :sales_total
       end
     end
 
-    resources :refund_reasons, :except => [:show, :destroy]
-    resources :return_authorization_reasons, :except => [:show, :destroy]
+    resources :reimbursement_types, only: [:index]
+    resources :refund_reasons, except: [:show, :destroy]
+    resources :return_authorization_reasons, except: [:show, :destroy]
 
     resources :shipping_methods
     resources :shipping_categories
-    resources :stock_transfers, :only => [:index, :show, :new, :create]
+    resources :stock_transfers, only: [:index, :show, :new, :create]
     resources :stock_locations do
-      resources :stock_movements, :except => [:edit, :update, :destroy]
+      resources :stock_movements, except: [:edit, :update, :destroy]
       collection do
         post :transfer_stock
       end
     end
 
-    resources :stock_items, :only => [:create, :update, :destroy]
+    resources :stock_items, only: [:create, :update, :destroy]
     resources :tax_rates
 
     resources :trackers
     resources :payment_methods
+    resources :roles
 
     resources :users do
       member do
@@ -170,4 +170,6 @@ Spree::Core::Engine.add_routes do
       end
     end
   end
+
+  get '/admin', to: 'admin/root#index', as: :admin
 end

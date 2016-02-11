@@ -1,6 +1,6 @@
 require 'spec_helper'
 
-describe Spree::BaseHelper do
+describe Spree::BaseHelper, type: :helper do
   include Spree::BaseHelper
 
   let(:current_store){ create :store }
@@ -18,7 +18,7 @@ describe Spree::BaseHelper do
       end
 
       it "return complete list of countries" do
-        available_countries.count.should == Spree::Country.count
+        expect(available_countries.count).to eq(Spree::Country.count)
       end
     end
 
@@ -31,7 +31,7 @@ describe Spree::BaseHelper do
         end
 
         it "return only the countries defined by the checkout zone" do
-          available_countries.should == [country]
+          expect(available_countries).to eq([country])
         end
       end
 
@@ -44,7 +44,7 @@ describe Spree::BaseHelper do
         end
 
         it "return complete list of countries" do
-          available_countries.count.should == Spree::Country.count
+          expect(available_countries.count).to eq(Spree::Country.count)
         end
       end
     end
@@ -65,37 +65,6 @@ describe Spree::BaseHelper do
 
     it "should raise NoMethodError when style is not exists" do
       expect { another_strange_image(product) }.to raise_error(NoMethodError)
-    end
-
-  end
-
-  # Regression test for #2034
-  context "flash_message" do
-    let(:flash) { {:notice => "ok", :foo => "foo", :bar => "bar"} }
-
-    it "should output all flash content" do
-      flash_messages
-      html = Nokogiri::HTML(helper.output_buffer)
-      html.css(".notice").text.should == "ok"
-      html.css(".foo").text.should == "foo"
-      html.css(".bar").text.should == "bar"
-    end
-
-    it "should output flash content except one key" do
-      flash_messages(:ignore_types => :bar)
-      html = Nokogiri::HTML(helper.output_buffer)
-      html.css(".notice").text.should == "ok"
-      html.css(".foo").text.should == "foo"
-      html.css(".bar").text.should be_empty
-    end
-
-    it "should output flash content except some keys" do
-      flash_messages(:ignore_types => [:foo, :bar])
-      html = Nokogiri::HTML(helper.output_buffer)
-      html.css(".notice").text.should == "ok"
-      html.css(".foo").text.should be_empty
-      html.css(".bar").text.should be_empty
-      helper.output_buffer.should == "<div class=\"flash notice\">ok</div>"
     end
   end
 
@@ -139,6 +108,24 @@ describe Spree::BaseHelper do
       tags = Nokogiri::HTML.parse(meta_data_tags)
       content = tags.css("meta[name=description]").first["content"]
       assert content.length <= 160, "content length is not truncated to 160 characters"
+    end
+  end
+
+  # Regression test for #5384
+  context "custom image helpers conflict with inproper statements" do
+    let(:product) { mock_model(Spree::Product, :images => [], :variant_images => []) }
+    before do
+      Spree::Image.class_eval do
+        attachment_definitions[:attachment][:styles].merge!({:foobar => '1x1'})
+      end
+    end
+
+    it "should not raise errors when helper method called" do
+      expect { foobar_image(product) }.not_to raise_error
+    end
+
+    it "should raise NoMethodError when statement with name equal to style name called" do
+      expect { foobar(product) }.to raise_error(NoMethodError)
     end
   end
 

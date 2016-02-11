@@ -4,8 +4,9 @@ FactoryGirl.define do
     bill_address
     completed_at nil
     email { user.email }
+    store
 
-    ignore do
+    transient do
       line_items_price BigDecimal.new(10)
     end
 
@@ -16,13 +17,25 @@ FactoryGirl.define do
       end
     end
 
+    factory :order_with_line_item_quantity do
+      transient do
+        line_items_quantity 1
+      end
+
+      after(:create) do |order, evaluator|
+        create(:line_item, order: order, price: evaluator.line_items_price, quantity: evaluator.line_items_quantity)
+        order.line_items.reload # to ensure order.line_items is accessible after
+      end
+    end
+
     factory :order_with_line_items do
       bill_address
       ship_address
 
-      ignore do
+      transient do
         line_items_count 1
         shipment_cost 100
+        shipping_method_filter Spree::ShippingMethod::DISPLAY_ON_FRONT_END
       end
 
       after(:create) do |order, evaluator|
@@ -38,8 +51,8 @@ FactoryGirl.define do
       factory :completed_order_with_totals do
         state 'complete'
 
-        after(:create) do |order|
-          order.refresh_shipment_rates
+        after(:create) do |order, evaluator|
+          order.refresh_shipment_rates(evaluator.shipping_method_filter)
           order.update_column(:completed_at, Time.now)
         end
 

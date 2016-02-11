@@ -1,6 +1,6 @@
 require 'spec_helper'
 
-describe Spree::Reimbursement do
+describe Spree::Reimbursement, type: :model do
 
   describe ".before_create" do
     describe "#generate_number" do
@@ -18,7 +18,7 @@ describe Spree::Reimbursement do
         let(:reimbursement) { Spree::Reimbursement.new(number: nil) }
 
         before do
-          reimbursement.stub(valid?: true)
+          allow(reimbursement).to receive_messages(valid?: true)
         end
 
         it "should assign number with random RI number" do
@@ -59,7 +59,7 @@ describe Spree::Reimbursement do
     let(:payment)                 { build(:payment, amount: payment_amount, order: order, state: 'completed') }
     let(:payment_amount)          { order.total }
     let(:customer_return)         { build(:customer_return, return_items: [return_item]) }
-    let(:return_item)             { build(:return_item, pre_tax_amount: inventory_unit.pre_tax_amount, inventory_unit: inventory_unit) }
+    let(:return_item)             { build(:return_item, inventory_unit: inventory_unit) }
 
     let!(:default_refund_reason) { Spree::RefundReason.find_or_create_by!(name: Spree::RefundReason::RETURN_PROCESSING_REASON, mutable: false) }
 
@@ -92,7 +92,7 @@ describe Spree::Reimbursement do
       expect {
         subject
       }.to change{ Spree::Refund.count }.by(1)
-      Spree::Refund.last.amount.should eq order.total
+      expect(Spree::Refund.last.amount).to eq order.total
     end
 
     context 'with additional tax' do
@@ -113,15 +113,15 @@ describe Spree::Reimbursement do
     context 'with included tax' do
       let!(:tax_rate) { create(:tax_rate, name: "VAT Tax", amount: 0.1, included_in_price: true, zone: tax_zone) }
 
-      it 'saves the additional tax and refunds the total' do
+      it 'saves the included tax and refunds the total' do
         expect {
           subject
         }.to change { Spree::Refund.count }.by(1)
         return_item.reload
         expect(return_item.included_tax_total).to be < 0
         expect(return_item.included_tax_total).to eq line_item.included_tax_total
-        expect(reimbursement.total).to eq line_item.pre_tax_amount
-        expect(Spree::Refund.last.amount).to eq line_item.pre_tax_amount
+        expect(reimbursement.total).to eq (line_item.pre_tax_amount + line_item.included_tax_total).round(2)
+        expect(Spree::Refund.last.amount).to eq (line_item.pre_tax_amount + line_item.included_tax_total).round(2)
       end
     end
 
@@ -129,7 +129,7 @@ describe Spree::Reimbursement do
       let!(:non_return_refund) { create(:refund, amount: 1, payment: payment) }
 
       it 'raises IncompleteReimbursement error' do
-        expect { subject }.to raise_error(Spree::Reimbursement::IncompleteReimbursement)
+        expect { subject }.to raise_error(Spree::Reimbursement::IncompleteReimbursementError)
       end
     end
 
@@ -142,14 +142,74 @@ describe Spree::Reimbursement do
       end
     end
 
+    it "triggers the reimbursement mailer to be sent" do
+      expect(Spree::ReimbursementMailer).to receive(:reimbursement_email).with(reimbursement.id) { double(deliver_later: true) }
+      subject
+    end
   end
 
   describe "#return_items_requiring_exchange" do
     it "returns only the return items that require an exchange" do
       return_items = [double(exchange_required?: true), double(exchange_required?: true),double(exchange_required?: false)]
-      subject.stub(:return_items) { return_items }
+      allow(subject).to receive(:return_items) { return_items }
       expect(subject.return_items_requiring_exchange).to eq return_items.take(2)
     end
   end
 
+  describe "#calculated_total" do
+    context 'with return item amounts that would round up if added' do
+      let(:reimbursement) { Spree::Reimbursement.new }
+
+      subject { reimbursement.calculated_total }
+
+      before do
+        reimbursement.return_items << Spree::ReturnItem.new(pre_tax_amount: 10.003)
+        reimbursement.return_items << Spree::ReturnItem.new(pre_tax_amount: 10.003)
+      end
+
+      it 'rounds down' do
+        expect(subject).to eq 20
+      end
+    end
+
+    context 'with a return item amount that should round up' do
+      let(:reimbursement) { Spree::Reimbursement.new }
+
+      subject { reimbursement.calculated_total }
+
+      before do
+        reimbursement.return_items << Spree::ReturnItem.new(pre_tax_amount: 19.998)
+      end
+
+      it 'rounds up' do
+        expect(subject).to eq 20
+      end
+    end
+  end
+
+  describe '.build_from_customer_return' do
+    let(:customer_return) { create(:customer_return, line_items_count: 5) }
+
+    let!(:pending_return_item) { customer_return.return_items.first.tap { |ri| ri.update!(acceptance_status: 'pending') } }
+    let!(:accepted_return_item) { customer_return.return_items.second.tap(&:accept!) }
+    let!(:rejected_return_item) { customer_return.return_items.third.tap(&:reject!) }
+    let!(:manual_intervention_return_item) { customer_return.return_items.fourth.tap(&:require_manual_intervention!) }
+    let!(:already_reimbursed_return_item) { customer_return.return_items.fifth }
+
+    let!(:previous_reimbursement) { create(:reimbursement, order: customer_return.order, return_items: [already_reimbursed_return_item]) }
+
+    subject { Spree::Reimbursement.build_from_customer_return(customer_return) }
+
+    it 'connects to the accepted return items' do
+      expect(subject.return_items.to_a).to eq [accepted_return_item]
+    end
+
+    it 'connects to the order' do
+      expect(subject.order).to eq customer_return.order
+    end
+
+    it 'connects to the customer_return' do
+      expect(subject.customer_return).to eq customer_return
+    end
+  end
 end

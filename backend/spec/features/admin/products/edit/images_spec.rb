@@ -1,6 +1,6 @@
 require 'spec_helper'
 
-describe "Product Images" do
+describe "Product Images", type: :feature, js: true do
   stub_authorization!
 
   let(:file_path) { Rails.root + "../../spec/support/ror_ringer.jpeg" }
@@ -12,76 +12,75 @@ describe "Product Images" do
     Spree::Image.attachment_definitions[:attachment][:styles].symbolize_keys!
   end
 
-  context "uploading, editing, and deleting an image", :js => true do
+  context "uploading, editing, and deleting an image" do
     it "should allow an admin to upload and edit an image for a product" do
       Spree::Image.attachment_definitions[:attachment].delete :storage
 
       create(:product)
 
-      visit spree.admin_path
-      click_link "Products"
+      visit spree.admin_products_path
       click_icon(:edit)
       click_link "Images"
       click_link "new_image_link"
       attach_file('image_attachment', file_path)
       click_button "Update"
-      page.should have_content("successfully created!")
+      expect(page).to have_content("successfully created!")
 
       click_icon(:edit)
-      fill_in "image_alt", :with => "ruby on rails t-shirt"
+      fill_in "image_alt", with: "ruby on rails t-shirt"
       click_button "Update"
-      page.should have_content("successfully updated!")
-      page.should have_content("ruby on rails t-shirt")
+      expect(page).to have_content("successfully updated!")
+      expect(page).to have_content("ruby on rails t-shirt")
 
       accept_alert do
-        click_icon :trash
+        click_icon :delete
       end
-      page.should_not have_content("ruby on rails t-shirt")
+      expect(page).not_to have_content("ruby on rails t-shirt")
     end
   end
 
   # Regression test for #2228
   it "should see variant images" do
     variant = create(:variant)
-    variant.images.create!(:attachment => File.open(file_path))
+    variant.images.create!(attachment: File.open(file_path))
     visit spree.admin_product_images_path(variant.product)
 
-    page.should_not have_content("No Images Found.")
-    within("table.index") do
-      page.should have_content(variant.options_text)
+    expect(page).not_to have_content("No Images Found.")
+    within("table.table") do
+      expect(page).to have_content(variant.options_text)
 
       #ensure no duplicate images are displayed
-      page.should have_css("tbody tr", :count => 1)
+      expect(page).to have_css("tbody tr", count: 1)
 
       #ensure variant header is displayed
       within("thead") do
-        page.should have_content("Variant")
+        expect(page.body).to have_content("Variant")
       end
 
       #ensure variant header is displayed
       within("tbody") do
-        page.should have_content("Size: S")
+        expect(page).to have_content("Size: S")
       end
     end
   end
 
   it "should not see variant column when product has no variants" do
     product = create(:product)
-    product.images.create!(:attachment => File.open(file_path))
+    product.images.create!(attachment: File.open(file_path))
     visit spree.admin_product_images_path(product)
 
-    page.should_not have_content("No Images Found.")
-    within("table.index") do
+    expect(page).not_to have_content("No Images Found.")
+    within("table.table") do
       #ensure no duplicate images are displayed
-      page.should have_css("tbody tr", :count => 1)
+      expect(page).to have_css("tbody tr", count: 1)
 
       #ensure variant header is not displayed
       within("thead") do
-        page.should_not have_content("Variant")
+        expect(page).not_to have_content("Variant")
       end
 
       #ensure correct cell count
-      page.should have_css("thead th", :count => 3)
+      expect(page).to have_css("thead th", count: 3)
     end
   end
 end

@@ -2,8 +2,8 @@ module Spree
   module Api
     class PaymentsController < Spree::Api::BaseController
 
-      before_filter :find_order
-      before_filter :find_payment, only: [:update, :show, :authorize, :purchase, :capture, :void]
+      before_action :find_order
+      before_action :find_payment, only: [:update, :show, :authorize, :purchase, :capture, :void]
 
       def index
         @payments = @order.payments.ransack(params[:q]).result.page(params[:page]).per(params[:per_page])
@@ -12,7 +12,7 @@ module Spree
 
       def new
         @payment_methods = Spree::PaymentMethod.available
-        respond_with(@payment_method)
+        respond_with(@payment_methods)
       end
 
       def create
@@ -26,7 +26,7 @@ module Spree
 
       def update
         authorize! params[:action], @payment
-        if ! @payment.pending?
+        if !@payment.editable?
           render 'update_forbidden', status: 403
         elsif @payment.update_attributes(payment_params)
           respond_with(@payment, default_template: :show)
@@ -58,24 +58,18 @@ module Spree
       private
 
         def find_order
-          @order = Spree::Order.find_by(number: order_id)
-          authorize! :read, @order
+          @order = Spree::Order.friendly.find(order_id)
+          authorize! :read, @order, order_token
         end
 
         def find_payment
-          @payment = @order.payments.find(params[:id])
+          @payment = @order.payments.friendly.find(params[:id])
         end
 
         def perform_payment_action(action, *args)
-          authorize! action, Payment
-
-          begin
-            @payment.send("#{action}!", *args)
-            respond_with(@payment, :default_template => :show)
-          rescue Spree::Core::GatewayError => e
-            @error = e.message
-            render 'spree/api/errors/gateway_error', status: 422
-          end
+          authorize! action, Spree::Payment
+          @payment.send("#{action}!", *args)
+          respond_with(@payment, default_template: :show)
         end
 
         def payment_params

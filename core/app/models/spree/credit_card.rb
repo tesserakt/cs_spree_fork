@@ -1,23 +1,36 @@
 module Spree
   class CreditCard < Spree::Base
     belongs_to :payment_method
+    belongs_to :user, class_name: Spree.user_class, foreign_key: 'user_id'
     has_many :payments, as: :source
 
-    before_create :set_missing_info
+    before_save :set_last_digits
 
-    attr_accessor :number, :verification_value, :encrypted_data
+    after_save :ensure_one_default
+
+    attr_accessor :encrypted_data,
+                    :number,
+                    :imported,
+                    :verification_value
 
     validates :month, :year, numericality: { only_integer: true }, if: :require_card_numbers?, on: :create
-    validates :number, presence: true, if: :require_card_numbers?, on: :create
+    validates :number, presence: true, if: :require_card_numbers?, on: :create, unless: :imported
     validates :name, presence: true, if: :require_card_numbers?, on: :create
-    validates :verification_value, presence: true, if: :require_card_numbers?, on: :create
-
-    validate :expiry_not_in_the_past
+    validates :verification_value, presence: true, if: :require_card_numbers?, on: :create, unless: :imported
 
     scope :with_payment_profile, -> { where('gateway_customer_profile_id IS NOT NULL') }
+    scope :default, -> { where(default: true) }
 
     # needed for some of the ActiveMerchant gateways (eg. SagePay)
     alias_attribute :brand, :cc_type
+
+    # ActiveMerchant::Billing::CreditCard added this accessor used by some gateways.
+    # More info: https://github.com/spree/spree/issues/6209
+    #
+    # Returns or sets the track data for the card
+    #
+    # @return [String]
+    attr_accessor :track_data
 
     CARD_TYPES = {
       visa: /^4[0-9]{12}(?:[0-9]{3})?$/,
@@ -28,11 +41,25 @@ module Spree
       jcb: /^(?:2131|1800|35\d{3})\d{11}$/
     }
 
+    # As of rails 4.2 string columns always return strings, perhaps we should
+    # change these to integer columns on db level
+    def month
+      if type_casted = super
+        type_casted.to_i
+      end
+    end
+
+    def year
+      if type_casted = super
+        type_casted.to_i
+      end
+    end
+
     def expiry=(expiry)
       return unless expiry.present?
 
       self[:month], self[:year] =
-      if expiry.match(/\d\s?\/\s?\d/) # will match mm/yy and mm / yyyy
+      if expiry.match(/\d{2}\s?\/\s?\d{2,4}/) # will match mm/yy and mm / yyyy
         expiry.delete(' ').split('/')
       elsif match = expiry.match(/(\d{2})(\d{2,4})/) # will match mmyy and mmyyyy
         [match[1], match[2]]
@@ -41,7 +68,7 @@ module Spree
         self[:year] = "20" + self[:year] if self[:year].length == 2
         self[:year] = self[:year].to_i
       end
-      self[:month] = self[:month].to_i
+      self[:month] = self[:month].to_i if self[:month]
     end
 
     def number=(num)
@@ -58,6 +85,12 @@ module Spree
       when '' then try_type_from_number
       else type
       end
+    end
+
+    def set_last_digits
+      number.to_s.gsub!(/\s/,'')
+      verification_value.to_s.gsub!(/\s/,'')
+      self.last_digits ||= number.to_s.length <= 4 ? number : number.to_s.slice(-4..-1)
     end
 
     def try_type_from_number
@@ -85,7 +118,7 @@ module Spree
 
     # Indicates whether its possible to void the payment.
     def can_void?(payment)
-      !payment.void?
+      !payment.failed? && !payment.void?
     end
 
     # Indicates whether its possible to credit the payment.  Note that most gateways require that the
@@ -122,41 +155,16 @@ module Spree
 
     private
 
-    def expiry_not_in_the_past
-      if year.present? && month.present?
-        if month.to_i < 1 || month.to_i > 12
-          errors.add(:base, :expiry_invalid)
-        else
-          time = Time.zone.parse("#{year}-#{month}-1")
-          if time < Time.zone.now.to_time.beginning_of_month
-            errors.add(:base, :card_expired)
-          end
-        end
-      end
-    end
-
     def require_card_numbers?
       !self.encrypted_data.present? && !self.has_payment_profile?
     end
 
-    def set_last_digits
-      number.to_s.gsub!(/\s/,'')
-      verification_value.to_s.gsub!(/\s/,'')
-      self.last_digits ||= number.to_s.length <= 4 ? number : number.to_s.slice(-4..-1)
-    end
-
-    def set_missing_info
-      set_last_digits
-      if has_payment_profile?
-        if matching_card = self.class.where(gateway_customer_profile_id: self.gateway_customer_profile_id, gateway_payment_profile_id: self.gateway_payment_profile_id).first
-          self.cc_type     = matching_card.cc_type
-          self.last_digits = matching_card.last_digits
-          self.month       = matching_card.month
-          self.name        = matching_card.name
-          self.year        = matching_card.year
+    def ensure_one_default
+      if self.user_id && self.default
+        CreditCard.where(default: true).where.not(id: self.id).where(user_id: self.user_id).each do |ucc|
+          ucc.update_columns(default: false)
         end
       end
     end
-
   end
 end

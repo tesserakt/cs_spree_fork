@@ -32,13 +32,15 @@ module Spree
       :id, :firstname, :lastname, :first_name, :last_name,
       :address1, :address2, :city, :country_id, :state_id,
       :zipcode, :phone, :state_name, :alternative_phone, :company,
-      :country => [:iso, :name, :iso3, :iso_name],
-      :state => [:name, :abbr]
+      country: [:iso, :name, :iso3, :iso_name],
+      state: [:name, :abbr]
     ]
 
-    @@checkout_attributes = [:email, :use_billing, :shipping_method_id, :coupon_code, :special_instructions]
+    @@checkout_attributes = [
+      :coupon_code, :email, :shipping_method_id, :special_instructions, :use_billing
+    ]
 
-    @@customer_return_attributes = [:stock_location_id, return_items_attributes: [:id, :inventory_unit_id, :return_authorization_id, :returned, :pre_tax_amount, :acceptance_status, :exchange_variant_id]]
+    @@customer_return_attributes = [:stock_location_id, return_items_attributes: [:id, :inventory_unit_id, :return_authorization_id, :returned, :pre_tax_amount, :acceptance_status, :exchange_variant_id, :resellable]]
 
     @@image_attributes = [:alt, :attachment, :position, :viewable_type, :viewable_id]
 
@@ -59,7 +61,9 @@ module Spree
       :meta_keywords, :price, :sku, :deleted_at, :prototype_id,
       :option_values_hash, :weight, :height, :width, :depth,
       :shipping_category_id, :tax_category_id,
-      :taxon_ids, :option_type_ids, :cost_currency, :cost_price]
+      :cost_currency, :cost_price,
+      option_type_ids: [], taxon_ids: []
+    ]
 
     @@property_attributes = [:name, :presentation]
 
@@ -99,8 +103,10 @@ module Spree
 
     @@variant_attributes = [
       :name, :presentation, :cost_price, :lock_version,
-      :position, :option_value_ids,
+      :position, :track_inventory,
       :product_id, :product, :option_values_attributes, :price,
-      :weight, :height, :width, :depth, :sku, :cost_currency, options: [ :name, :value ]]
+      :weight, :height, :width, :depth, :sku, :cost_currency,
+      options: [:name, :value], option_value_ids: []
+    ]
   end
 end

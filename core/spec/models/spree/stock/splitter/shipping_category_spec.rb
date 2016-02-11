@@ -3,7 +3,7 @@ require 'spec_helper'
 module Spree
   module Stock
     module Splitter
-      describe ShippingCategory do
+      describe ShippingCategory, :type => :model do
 
         let(:variant1) { build(:variant) }
         let(:variant2) { build(:variant) }
@@ -11,13 +11,13 @@ module Spree
         let(:shipping_category_2) { create(:shipping_category, name: 'B') }
 
         def inventory_unit1
-          build(:inventory_unit, variant: variant1).tap do |inventory_unit|
+          InventoryUnit.new(variant: variant1).tap do |inventory_unit|
             inventory_unit.variant.product.shipping_category = shipping_category_1
           end
         end
 
         def inventory_unit2
-          build(:inventory_unit, variant: variant2).tap do |inventory_unit|
+          InventoryUnit.new(variant: variant2).tap do |inventory_unit|
             inventory_unit.variant.product.shipping_category = shipping_category_2
           end
         end
@@ -36,12 +36,11 @@ module Spree
           9.times { package2.add inventory_unit2, :backordered }
 
           packages = subject.split([package1, package2])
-          packages[0].quantity.should eq 4
-          packages[1].quantity.should eq 8
-          packages[2].quantity.should eq 6
-          packages[3].quantity.should eq 9
+          expect(packages[0].quantity).to eq 4
+          expect(packages[1].quantity).to eq 8
+          expect(packages[2].quantity).to eq 6
+          expect(packages[3].quantity).to eq 9
         end
-
       end
     end
   end

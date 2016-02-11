@@ -1,33 +1,36 @@
 require 'spec_helper'
 
-describe Spree::InventoryUnit do
+describe Spree::InventoryUnit, :type => :model do
   let(:stock_location) { create(:stock_location_with_items) }
   let(:stock_item) { stock_location.stock_items.order(:id).first }
 
   context "#backordered_for_stock_item" do
     let(:order) do
-      order = create(:order)
-      order.state = 'complete'
+      order = create(:order, state: 'complete', ship_address: create(:ship_address))
       order.completed_at = Time.now
+      create(:shipment, order: order, stock_location: stock_location)
+      order.shipments.reload
+      create(:line_item, order: order, variant: stock_item.variant)
+      order.line_items.reload
       order.tap(&:save!)
     end
 
     let(:shipment) do
-      shipment = Spree::Shipment.new
-      shipment.stock_location = stock_location
-      shipment.shipping_methods << create(:shipping_method)
-      shipment.order = order
-      # We don't care about this in this test
-      shipment.stub(:ensure_correct_adjustment)
-      shipment.tap(&:save!)
+      order.shipments.first
+    end
+
+    let(:shipping_method) do
+      shipment.shipping_methods.first
     end
 
     let!(:unit) do
-      unit = shipment.inventory_units.build
+      unit = shipment.inventory_units.first
       unit.state = 'backordered'
-      unit.variant_id = stock_item.variant.id
-      unit.order_id = order.id
       unit.tap(&:save!)
+    end
+
+    before do
+      stock_item.set_count_on_hand(-2)
     end
 
     # Regression for #3066
@@ -37,7 +40,7 @@ describe Spree::InventoryUnit do
     end
 
     it "finds inventory units from its stock location when the unit's variant matches the stock item's variant" do
-      Spree::InventoryUnit.backordered_for_stock_item(stock_item).should =~ [unit]
+      expect(Spree::InventoryUnit.backordered_for_stock_item(stock_item)).to match_array([unit])
     end
 
     it "does not find inventory units that aren't backordered" do
@@ -46,7 +49,7 @@ describe Spree::InventoryUnit do
       on_hand_unit.variant_id = 1
       on_hand_unit.save!
 
-      Spree::InventoryUnit.backordered_for_stock_item(stock_item).should_not include(on_hand_unit)
+      expect(Spree::InventoryUnit.backordered_for_stock_item(stock_item)).not_to include(on_hand_unit)
     end
 
     it "does not find inventory units that don't match the stock item's variant" do
@@ -55,7 +58,14 @@ describe Spree::InventoryUnit do
       other_variant_unit.variant = create(:variant)
       other_variant_unit.save!
 
-      Spree::InventoryUnit.backordered_for_stock_item(stock_item).should_not include(other_variant_unit)
+      expect(Spree::InventoryUnit.backordered_for_stock_item(stock_item)).not_to include(other_variant_unit)
+    end
+
+    it "does not change shipping cost when fulfilling the order" do
+      current_shipment_cost = shipment.cost
+      shipping_method.calculator.set_preference(:amount, current_shipment_cost + 5.0)
+      stock_item.set_count_on_hand(0)
+      expect(shipment.reload.cost).to eq(current_shipment_cost)
     end
 
     context "other shipments" do
@@ -72,7 +82,7 @@ describe Spree::InventoryUnit do
         shipment.shipping_methods << create(:shipping_method)
         shipment.order = other_order
         # We don't care about this in this test
-        shipment.stub(:ensure_correct_adjustment)
+        allow(shipment).to receive(:ensure_correct_adjustment)
         shipment.tap(&:save!)
       end
 
@@ -85,7 +95,7 @@ describe Spree::InventoryUnit do
       end
 
       it "does not find inventory units belonging to incomplete orders" do
-        Spree::InventoryUnit.backordered_for_stock_item(stock_item).should_not include(other_unit)
+        expect(Spree::InventoryUnit.backordered_for_stock_item(stock_item)).not_to include(other_unit)
       end
 
     end
@@ -103,7 +113,7 @@ describe Spree::InventoryUnit do
     end
 
     it "can still fetch variants by eager loading (remove default_scope)" do
-      pending "find a way to remove default scope when eager loading associations"
+      skip "find a way to remove default scope when eager loading associations"
       unit.variant.destroy
       expect(Spree::InventoryUnit.joins(:variant).includes(:variant).first.variant).to be_a Spree::Variant
     end
@@ -119,12 +129,12 @@ describe Spree::InventoryUnit do
 
     it "should create a stock movement" do
       Spree::InventoryUnit.finalize_units!(inventory_units)
-      inventory_units.any?(&:pending).should be_false
+      expect(inventory_units.any?(&:pending)).to be false
     end
   end
 
   describe "#current_or_new_return_item" do
-    before { inventory_unit.stub(pre_tax_amount: 100.0) }
+    before { allow(inventory_unit).to receive_messages(pre_tax_amount: 100.0) }
 
     subject { inventory_unit.current_or_new_return_item }
 
@@ -151,40 +161,6 @@ describe Spree::InventoryUnit do
       it "associates itself to the new return_item" do
         expect(subject.inventory_unit).to eq inventory_unit
       end
-    end
-  end
-
-  describe "#pre_tax_amount" do
-    let(:order)           { create(:order) }
-    let(:line_item_quantity) { 2 }
-    let(:pre_tax_amount)  { 100.0 }
-    let(:line_item)       { create(:line_item, price: 100.0, quantity: line_item_quantity, pre_tax_amount: pre_tax_amount) }
-
-    before { order.line_items << line_item }
-
-    subject { build(:inventory_unit, order: order, line_item: line_item) }
-
-    context "no promotions or taxes" do
-      its(:pre_tax_amount) { should eq pre_tax_amount / line_item_quantity }
-    end
-
-    context "order adjustments" do
-      let(:adjustment_amount) { -10.0 }
-
-      before do
-        order.adjustments << create(:adjustment, amount: adjustment_amount, eligible: true, label: 'Adjustment', source_type: 'Spree::Order')
-        order.adjustments.first.update_attributes(amount: adjustment_amount)
-      end
-
-      its(:pre_tax_amount) { should eq (pre_tax_amount - adjustment_amount.abs) / line_item_quantity }
-    end
-
-    context "shipping adjustments" do
-      let(:adjustment_total) { -50.0 }
-
-      before { order.shipments << Spree::Shipment.new(adjustment_total: adjustment_total) }
-
-      its(:pre_tax_amount) { should eq pre_tax_amount / line_item_quantity }
     end
   end
 

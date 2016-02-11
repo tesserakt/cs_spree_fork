@@ -1,6 +1,6 @@
 module Spree
   class LineItem < Spree::Base
-    before_validation :adjust_quantity
+    before_validation :invalid_quantity_check
     belongs_to :order, class_name: "Spree::Order", inverse_of: :line_items, touch: true
     belongs_to :variant, class_name: "Spree::Variant", inverse_of: :line_items
     belongs_to :tax_category, class_name: "Spree::TaxCategory"
@@ -34,6 +34,9 @@ module Spree
 
     attr_accessor :target_shipment
 
+    self.whitelisted_ransackable_associations = ['variant']
+    self.whitelisted_ransackable_attributes = ['variant_id']
+
     def copy_price
       if variant
         self.price = variant.price if price.nil?
@@ -57,6 +60,10 @@ module Spree
       amount + promo_total
     end
 
+    def discounted_money
+      Spree::Money.new(discounted_amount, { currency: currency })
+    end
+
     def final_amount
       amount + adjustment_total
     end
@@ -73,7 +80,7 @@ module Spree
     alias display_total money
     alias display_amount money
 
-    def adjust_quantity
+    def invalid_quantity_check
       self.quantity = 0 if quantity.nil? || quantity < 0
     end
 
@@ -95,10 +102,23 @@ module Spree
       Spree::Variant.unscoped { super }
     end
 
-    def build_options(options)
-      options.keys.each do |key|
-        self.send("build_#{key}",options[key])
+    def options=(options={})
+      return unless options.present?
+
+      opts = options.dup # we will be deleting from the hash, so leave the caller's copy intact
+
+      currency = opts.delete(:currency) || order.try(:currency)
+
+      if currency
+        self.currency = currency
+        self.price    = variant.price_in(currency).amount +
+                        variant.price_modifier_amount_in(currency, opts)
+      else
+        self.price    = variant.price +
+                        variant.price_modifier_amount(opts)
       end
+
+      self.assign_attributes opts
     end
 
     private
@@ -110,17 +130,17 @@ module Spree
 
       def update_adjustments
         if quantity_changed?
-          update_tax_charge # Called to ensure pre_tax_amount is updated. 
           recalculate_adjustments
+          update_tax_charge # Called to ensure pre_tax_amount is updated.
         end
       end
 
       def recalculate_adjustments
-        Spree::ItemAdjustments.new(self).update
+        Adjustable::AdjustmentsUpdater.update(self)
       end
 
       def update_tax_charge
-        Spree::TaxRate.adjust(order.tax_zone, [self])
+        Spree::TaxRate.adjust(order, [self])
       end
 
       def ensure_proper_currency

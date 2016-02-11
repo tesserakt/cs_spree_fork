@@ -1,6 +1,6 @@
 require 'spec_helper'
 
-describe Spree::ReturnAuthorization do
+describe Spree::ReturnAuthorization, :type => :model do
   let(:order) { create(:shipped_order) }
   let(:stock_location) { create(:stock_location) }
   let(:rma_reason) { create(:return_authorization_reason) }
@@ -18,7 +18,69 @@ describe Spree::ReturnAuthorization do
 
     it "should be invalid when order has no inventory units" do
       return_authorization.save
-      return_authorization.errors[:order].should == ["has no shipped units"]
+      expect(return_authorization.errors[:order]).to eq(["has no shipped units"])
+    end
+
+    context "expedited exchanges are configured" do
+      let(:order)                { create(:shipped_order, line_items_count: 2) }
+      let(:exchange_return_item) { create(:exchange_return_item, inventory_unit: order.inventory_units.first) }
+      let(:return_item)          { create(:return_item, inventory_unit: order.inventory_units.last) }
+      subject                    { create(:return_authorization, order: order, return_items: [exchange_return_item, return_item]) }
+
+      before do
+        @expediteted_exchanges_config = Spree::Config[:expedited_exchanges]
+        Spree::Config[:expedited_exchanges] = true
+        @pre_exchange_hooks = subject.class.pre_expedited_exchange_hooks
+      end
+
+      after do
+        Spree::Config[:expedited_exchanges] = @expediteted_exchanges_config
+        subject.class.pre_expedited_exchange_hooks = @pre_exchange_hooks
+      end
+
+      context "no items to exchange" do
+        subject { create(:return_authorization, order: order) }
+
+        it "does not create a reimbursement" do
+          expect{subject.save}.to_not change { Spree::Reimbursement.count }
+        end
+      end
+
+      context "items to exchange" do
+        it "calls pre_expedited_exchange hooks with the return items to exchange" do
+          hook = double(:as_null_object)
+          expect(hook).to receive(:call).with [exchange_return_item]
+          subject.class.pre_expedited_exchange_hooks = [hook]
+          subject.save
+        end
+
+        it "attempts to accept all return items requiring exchange" do
+          expect(exchange_return_item).to receive :attempt_accept
+          expect(return_item).not_to receive :attempt_accept
+          subject.save
+        end
+
+        it "performs an exchange reimbursement for the exchange return items" do
+          subject.save
+          reimbursement = Spree::Reimbursement.last
+          expect(reimbursement.order).to eq subject.order
+          expect(reimbursement.return_items).to eq [exchange_return_item]
+          expect(exchange_return_item.reload.exchange_shipment).to be_present
+        end
+
+        context "the reimbursement fails" do
+          before do
+            allow_any_instance_of(Spree::Reimbursement).to receive(:save) { false }
+            allow_any_instance_of(Spree::Reimbursement).to receive(:errors) { double(full_messages: "foo") }
+          end
+
+          it "puts errors on the return authorization" do
+            subject.save
+            expect(subject.errors[:base]).to include "foo"
+          end
+        end
+      end
+
     end
   end
 
@@ -29,27 +91,27 @@ describe Spree::ReturnAuthorization do
 
         it "should return the assigned number" do
           return_authorization.save
-          return_authorization.number.should == '123'
+          expect(return_authorization.number).to eq('123')
         end
       end
 
       context "number is not assigned" do
         let(:return_authorization) { Spree::ReturnAuthorization.new(number: nil) }
 
-        before { return_authorization.stub valid?: true }
+        before { allow(return_authorization).to receive_messages valid?: true }
 
         it "should assign number with random RA number" do
           return_authorization.save
-          return_authorization.number.should =~ /RA\d{9}/
+          expect(return_authorization.number).to match(/RA\d{9}/)
         end
       end
     end
   end
 
   context "#currency" do
-    before { order.stub(:currency) { "ABC" } }
+    before { allow(order).to receive(:currency) { "ABC" } }
     it "returns the order currency" do
-      return_authorization.currency.should == "ABC"
+      expect(return_authorization.currency).to eq("ABC")
     end
   end
 
@@ -66,14 +128,14 @@ describe Spree::ReturnAuthorization do
     subject { return_authorization.pre_tax_total }
 
     it "sums it's associated return_item's pre-tax amounts" do
-      subject.should eq (pre_tax_amount_1 + pre_tax_amount_2 + pre_tax_amount_3)
+      expect(subject).to eq (pre_tax_amount_1 + pre_tax_amount_2 + pre_tax_amount_3)
     end
   end
 
   describe "#display_pre_tax_total" do
     it "returns a Spree::Money" do
-      return_authorization.stub(pre_tax_total: 21.22)
-      return_authorization.display_pre_tax_total.should == Spree::Money.new(21.22)
+      allow(return_authorization).to receive_messages(pre_tax_total: 21.22)
+      expect(return_authorization.display_pre_tax_total).to eq(Spree::Money.new(21.22))
     end
   end
 
@@ -91,21 +153,21 @@ describe Spree::ReturnAuthorization do
     context "no promotions" do
       let(:promo_total) { 0.0 }
       it "returns the pre-tax line item total" do
-        subject.should eq (weighted_line_item_pre_tax_amount * line_item_count)
+        expect(subject).to eq (weighted_line_item_pre_tax_amount * line_item_count)
       end
     end
 
     context "promotions" do
       let(:promo_total) { -10.0 }
       it "returns the pre-tax line item total minus the order level promotion value" do
-        subject.should eq (weighted_line_item_pre_tax_amount * line_item_count) + promo_total
+        expect(subject).to eq (weighted_line_item_pre_tax_amount * line_item_count) + promo_total
       end
     end
   end
 
   describe "#customer_returned_items?" do
     before do
-      Spree::Order.any_instance.stub(return!: true)
+      allow_any_instance_of(Spree::Order).to receive_messages(return!: true)
     end
 
     subject { return_authorization.customer_returned_items? }
@@ -125,6 +187,64 @@ describe Spree::ReturnAuthorization do
       it "returns false" do
         expect(subject).to eq false
       end
+    end
+  end
+
+  describe 'cancel_return_items' do
+    let(:return_authorization) { create(:return_authorization, return_items: return_items) }
+    let(:return_items) { [return_item] }
+    let(:return_item) { create(:return_item) }
+
+    subject {
+      return_authorization.cancel!
+    }
+
+    it 'cancels the associated return items' do
+      subject
+      expect(return_item.reception_status).to eq 'cancelled'
+    end
+
+    context 'some return items cannot be cancelled' do
+      let(:return_items) { [return_item, return_item_2] }
+      let(:return_item_2) { create(:return_item, reception_status: 'received') }
+
+      it 'cancels those that can be cancelled' do
+        subject
+        expect(return_item.reception_status).to eq 'cancelled'
+        expect(return_item_2.reception_status).to eq 'received'
+      end
+    end
+  end
+
+  describe '#can_cancel?' do
+    subject { create(:return_authorization, return_items: return_items).can_cancel? }
+    let(:return_items) { [return_item_1, return_item_2] }
+    let(:return_item_1) { create(:return_item) }
+    let(:return_item_2) { create(:return_item) }
+
+    context 'all items can be cancelled' do
+      it 'returns true' do
+        expect(subject).to eq true
+      end
+    end
+
+    context 'at least one return item can be cancelled' do
+      let(:return_item_2) { create(:return_item, reception_status: 'received') }
+
+      it { should eq true }
+    end
+
+    context 'no items can be cancelled' do
+      let(:return_item_1) { create(:return_item, reception_status: 'received') }
+      let(:return_item_2) { create(:return_item, reception_status: 'received') }
+
+      it { should eq false }
+    end
+
+    context 'when return_authorization has no return_items' do
+      let(:return_items) { [] }
+
+      it { should eq true }
     end
   end
 end

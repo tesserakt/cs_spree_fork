@@ -5,6 +5,7 @@ attributes *product_attributes
 
 node(:display_price) { |p| p.display_price.to_s }
 node(:has_variants) { |p| p.has_variants? }
+node(:taxon_ids) { |p| p.taxon_ids }
 
 child :master => :master do
   extends "spree/api/variants/small"
@@ -20,4 +21,12 @@ end
 
 child :product_properties => :product_properties do
   attributes *product_property_attributes
+end
+
+child :classifications => :classifications do
+  attributes :taxon_id, :position
+
+  child(:taxon) do
+    extends "spree/api/taxons/show"
+  end
 end

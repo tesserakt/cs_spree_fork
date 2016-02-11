@@ -15,8 +15,6 @@ module Spree
         :shipment_attributes,
         :taxonomy_attributes,
         :taxon_attributes,
-        :inventory_unit_attributes,
-        :return_authorization_attributes,
         :address_attributes,
         :country_attributes,
         :state_attributes,
@@ -29,7 +27,9 @@ module Spree
         :property_attributes,
         :stock_location_attributes,
         :stock_movement_attributes,
-        :stock_item_attributes
+        :stock_item_attributes,
+        :promotion_attributes,
+        :store_attributes
       ]
 
       mattr_reader *ATTRIBUTES
@@ -85,7 +85,7 @@ module Spree
 
       @@payment_attributes = [
         :id, :source_type, :source_id, :amount, :display_amount,
-        :payment_method_id, :response_code, :state, :avs_response, :created_at,
+        :payment_method_id, :state, :avs_response, :created_at,
         :updated_at
       ]
 
@@ -148,6 +148,16 @@ module Spree
       @@stock_item_attributes = [
         :id, :count_on_hand, :backorderable, :lock_version, :stock_location_id,
         :variant_id
+      ]
+
+      @@promotion_attributes = [
+        :id, :name, :description, :expires_at, :starts_at, :type, :usage_limit,
+        :match_policy, :code, :advertise, :path
+      ]
+
+      @@store_attributes = [
+        :id, :name, :url, :meta_description, :meta_keywords, :seo_title,
+        :mail_from_address, :default_currency, :code, :default
       ]
 
       def variant_attributes

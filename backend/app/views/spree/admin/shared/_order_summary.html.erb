@@ -1,41 +1,121 @@
-<header id="order_tab_summary" data-hook>
-  <dl class="additional-info">
-    <dt id="order_status" data-hook><%= Spree.t(:status) %>:</dt>
-    <dd><span class="state <%= @order.state %>"><%= Spree.t(@order.state, :scope => :order_state) %></span></dd>
-    <dt data-hook='admin_order_tab_subtotal_title'><%= Spree.t(:subtotal) %>:</dt>
-    <dd id='item_total'><%= @order.display_item_total.to_html %></dd>
-    <% if checkout_steps.include?("delivery") && @order.ship_total > 0 %>
-      <dt data-hook='admin_order_tab_ship_total_title'><%= Spree.t(:ship_total) %>:</dt>
-      <dd id='ship_total'><%= @order.display_ship_total.to_html %></dd>
-    <% end %>
+<div class="panel panel-default">
+  <div class="panel-heading">
+    <h3 class="panel-title"><%= Spree.t(:summary) %></h3>
+  </div>
 
-    <% if @order.included_tax_total != 0 %>
-      <dt data-hook='admin_order_tab_included_tax_title'><%= Spree.t(:tax_included) %>:</dt>
-      <dd id='included_tax_total'><%= @order.display_included_tax_total.to_html %></dd>
-    <% end %>
+  <table class="table table-condensed table-bordered" id="order_tab_summary" data-hook>
+    <tbody class="additional-info">
+      <tr>
+        <td id="order_status" width="35%" data-hook>
+          <strong><%= Spree.t(:status) %>:</strong>
+        </td>
+        <td>
+          <span class="state label label-<%= @order.state %>">
+            <%= Spree.t(@order.state, :scope => :order_state) %>
+          </span>
+        </td>
+      </tr>
+      <tr>
+        <td data-hook='admin_order_tab_subtotal_title'>
+          <strong><%= Spree.t(:subtotal) %>:</strong>
+        </td>
+        <td id='item_total'>
+          <%= @order.display_item_total.to_html %>
+        </td>
+      </tr>
 
-    <% if @order.additional_tax_total != 0 %>
-      <dt data-hook='admin_order_tab_additional_tax_title'><%= Spree.t(:tax) %>:</dt>
-      <dd id='additional_tax_total'><%= @order.display_additional_tax_total.to_html %></dd>
-    <% end %>
+      <% if @order.checkout_steps.include?("delivery") && @order.ship_total > 0 %>
+        <tr>
+          <td data-hook='admin_order_tab_ship_total_title'>
+            <strong><%= Spree.t(:ship_total) %>:</strong>
+          </td>
+          <td id='ship_total'>
+            <%= @order.display_ship_total.to_html %>
+          </td>
+        </tr>
+      <% end %>
 
-    <dt data-hook='admin_order_tab_total_title'><%= Spree.t(:total) %>:</dt>
-    <dd id='order_total'><%= @order.display_total.to_html %></dd>
+      <% if @order.included_tax_total != 0 %>
+        <tr>
+          <td data-hook='admin_order_tab_included_tax_title'>
+            <strong><%= Spree.t(:tax_included) %>:</strong>
+          </td>
+          <td id='included_tax_total'>
+            <%= @order.display_included_tax_total.to_html %>
+          </td>
+        </tr>
+      <% end %>
 
-    <% if @order.completed? %>
-      <dt><%= Spree.t(:shipment) %>: </dt>
-      <dd id='shipment_status'><span class="state <%= @order.shipment_state %>"><%= Spree.t(@order.shipment_state, :scope => :shipment_states, :default => [:missing, "none"]) %></span></dd>
-      <dt><%= Spree.t(:payment) %>: </dt>
-      <dd id='payment_status'><span class="state <%= @order.payment_state %>"><%= Spree.t(@order.payment_state, :scope => :payment_states, :default => [:missing, "none"]) %></span></dd>
-      <dt data-hook='admin_order_tab_date_completed_title'><%= Spree.t(:date_completed) %>:</dt>
-      <dd id='date_complete'><%= pretty_time(@order.completed_at) %></dd>
-    <% end %>
+      <% if @order.additional_tax_total != 0 %>
+        <tr>
+          <td data-hook='admin_order_tab_additional_tax_title'>
+            <strong><%= Spree.t(:tax) %>:</strong>
+          </td>
+          <td id='additional_tax_total'>
+            <%= @order.display_additional_tax_total.to_html %>
+          </td>
+        </tr>
+      <% end %>
 
-    <% if @order.approved? %>
-      <dt><%= Spree.t(:approver) %></dt>
-      <dd><%= @order.approver.email %></dd>
-      <dt><%= Spree.t(:approved_at) %></dt>
-      <dd><%= pretty_time(@order.approved_at) %></dd>
-    <% end %>
-  </dl>
-</header>
+      <tr>
+        <td data-hook='admin_order_tab_total_title'>
+          <strong><%= Spree.t(:total) %>:</strong>
+        </td>
+        <td id='order_total'><%= @order.display_total.to_html %></td>
+      </tr>
+
+      <% if @order.completed? %>
+        <tr>
+          <td>
+            <strong><%= Spree.t(:shipment) %>:</strong>
+          </td>
+          <td id='shipment_status'>
+            <span class="state label label-<%= @order.shipment_state %>">
+              <%= Spree.t(@order.shipment_state, :scope => :shipment_states, :default => [:missing, "none"]) %>
+            </span>
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <strong><%= Spree.t(:payment) %>:</strong>
+          </td>
+          <td id='payment_status'>
+            <span class="state label label-<%= @order.payment_state %>">
+              <%= Spree.t(@order.payment_state, :scope => :payment_states, :default => [:missing, "none"]) %>
+            </span>
+          </td>
+        </tr>
+        <tr>
+          <td data-hook='admin_order_tab_date_completed_title'>
+            <strong><%= Spree.t(:date_completed) %>:</strong>
+          </td>
+          <td id='date_complete'>
+            <%= pretty_time(@order.completed_at) %>
+          </td>
+        </tr>
+      <% end %>
+
+      <% if @order.approved? %>
+        <tr>
+          <td><strong><%= Spree.t(:approver) %></strong></td>
+          <td><%= @order.approver.email %></td>
+        </tr>
+        <tr>
+          <td><strong><%= Spree.t(:approved_at) %></strong></td>
+          <td><%= pretty_time(@order.approved_at) %></td>
+        </tr>
+      <% end %>
+
+      <% if @order.canceled? && @order.canceler && @order.canceled_at %>
+        <tr>
+          <td><strong><%= Spree.t(:canceler) %></strong></td>
+          <td><%= @order.canceler.email %></td>
+        </tr>
+        <tr>
+          <td><strong><%= Spree.t(:canceled_at) %></strong></td>
+          <td><%= pretty_time(@order.canceled_at) %></td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+</div>

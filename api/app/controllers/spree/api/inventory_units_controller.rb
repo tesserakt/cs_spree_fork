@@ -1,10 +1,11 @@
 module Spree
   module Api
     class InventoryUnitsController < Spree::Api::BaseController
-      before_filter :prepare_event, :only => :update
+      before_action :prepare_event, only: :update
 
       def show
         @inventory_unit = inventory_unit
+        respond_with(@inventory_unit)
       end
 
       def update
@@ -23,7 +24,7 @@ module Spree
       private
 
       def inventory_unit
-        @inventory_unit ||= InventoryUnit.accessible_by(current_ability, :read).find(params[:id])
+        @inventory_unit ||= Spree::InventoryUnit.accessible_by(current_ability, :read).find(params[:id])
       end
 
       def prepare_event

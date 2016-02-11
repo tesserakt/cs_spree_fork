@@ -6,9 +6,9 @@ module Spree
           @taxons = taxonomy.root.children
         else
           if params[:ids]
-            @taxons = Spree::Taxon.accessible_by(current_ability, :read).where(id: params[:ids].split(','))
+            @taxons = Spree::Taxon.includes(:children).accessible_by(current_ability, :read).where(id: params[:ids].split(','))
           else
-            @taxons = Spree::Taxon.accessible_by(current_ability, :read).order(:taxonomy_id, :lft).ransack(params[:q]).result
+            @taxons = Spree::Taxon.includes(:children).accessible_by(current_ability, :read).order(:taxonomy_id, :lft).ransack(params[:q]).result
           end
         end
 
@@ -26,7 +26,7 @@ module Spree
       end
 
       def create
-        authorize! :create, Taxon
+        authorize! :create, Spree::Taxon
         @taxon = Spree::Taxon.new(taxon_params)
         @taxon.taxonomy_id = params[:taxonomy_id]
         taxonomy = Spree::Taxonomy.find_by(id: params[:taxonomy_id])
@@ -65,7 +65,7 @@ module Spree
         # Products#index does not do the sorting.
         taxon = Spree::Taxon.find(params[:id])
         @products = taxon.products.ransack(params[:q]).result
-        @products = @products.page(params[:page]).per(500 || params[:per_page])
+        @products = @products.page(params[:page]).per(params[:per_page] || 500)
         render "spree/api/products/index"
       end
 

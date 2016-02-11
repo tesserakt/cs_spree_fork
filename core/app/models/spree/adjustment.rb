@@ -22,10 +22,12 @@
 # it might be reinstated.
 module Spree
   class Adjustment < Spree::Base
-    belongs_to :adjustable, polymorphic: true
+    belongs_to :adjustable, polymorphic: true, touch: true
     belongs_to :source, polymorphic: true
-    belongs_to :order, class_name: "Spree::Order"
+    belongs_to :order, class_name: 'Spree::Order', inverse_of: :all_adjustments
 
+    validates :adjustable, presence: true
+    validates :order, presence: true
     validates :label, presence: true
     validates :amount, numericality: true
 
@@ -40,21 +42,34 @@ module Spree
     end
 
     after_create :update_adjustable_adjustment_total
+    after_destroy :update_adjustable_adjustment_total
+
+    class_attribute :competing_promos_source_types
+
+    self.competing_promos_source_types = ['Spree::PromotionAction']
 
     scope :open, -> { where(state: 'open') }
     scope :closed, -> { where(state: 'closed') }
     scope :tax, -> { where(source_type: 'Spree::TaxRate') }
-    scope :non_tax, -> { where.not(source_type: 'Spree::TaxRate') }
+    scope :non_tax, -> do
+      source_type = arel_table[:source_type]
+      where(source_type.not_eq('Spree::TaxRate').or source_type.eq(nil))
+    end
     scope :price, -> { where(adjustable_type: 'Spree::LineItem') }
     scope :shipping, -> { where(adjustable_type: 'Spree::Shipment') }
     scope :optional, -> { where(mandatory: false) }
     scope :eligible, -> { where(eligible: true) }
     scope :charge, -> { where("#{quoted_table_name}.amount >= 0") }
     scope :credit, -> { where("#{quoted_table_name}.amount < 0") }
+    scope :nonzero, -> { where("#{quoted_table_name}.amount != 0") }
     scope :promotion, -> { where(source_type: 'Spree::PromotionAction') }
     scope :return_authorization, -> { where(source_type: "Spree::ReturnAuthorization") }
-    scope :included, -> { where(included: true)  }
+    scope :is_included, -> { where(included: true) }
     scope :additional, -> { where(included: false) }
+    scope :competing_promos, -> { where(source_type: competing_promos_source_types) }
+
+    extend DisplayMoney
+    money_methods :amount
 
     def closed?
       state == "closed"
@@ -64,36 +79,19 @@ module Spree
       adjustable ? adjustable.currency : Spree::Config[:currency]
     end
 
-    def display_amount
-      Spree::Money.new(amount, { currency: currency })
-    end
-
     def promotion?
-      source.class < Spree::PromotionAction
+      source_type == 'Spree::PromotionAction'
     end
 
-    # Recalculate amount given a target e.g. Order, Shipment, LineItem
-    #
     # Passing a target here would always be recommended as it would avoid
     # hitting the database again and would ensure you're compute values over
     # the specific object amount passed here.
-    #
-    # Noop if the adjustment is locked.
-    #
-    # If the adjustment has no source, do not attempt to re-calculate the amount.
-    # Chances are likely that this was a manually created adjustment in the admin backend.
-    def update!(target = nil)
-      return amount if closed?
-      if source.present?
-        amount = source.compute_amount(target || adjustable)
-        self.update_columns(
-          amount: amount,
-          updated_at: Time.now,
-        )
-        if promotion?
-          self.update_column(:eligible, source.promotion.eligible?(adjustable))
-        end
-      end
+    def update!(target = adjustable)
+      return amount if closed? || source.blank?
+      amount = source.compute_amount(target)
+      attributes = { amount: amount, updated_at: Time.now }
+      attributes[:eligible] = source.promotion.eligible?(target) if promotion?
+      update_columns(attributes)
       amount
     end
 
@@ -101,7 +99,7 @@ module Spree
 
     def update_adjustable_adjustment_total
       # Cause adjustable's total to be recalculated
-      Spree::ItemAdjustments.new(adjustable).update if adjustable
+      Adjustable::AdjustmentsUpdater.update(adjustable)
     end
 
   end

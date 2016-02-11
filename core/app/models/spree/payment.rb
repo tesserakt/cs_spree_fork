@@ -1,29 +1,39 @@
 module Spree
   class Payment < Spree::Base
-    include Spree::Payment::Processing
+    extend FriendlyId
+    friendly_id :number, slug_column: :number, use: :slugged
 
-    IDENTIFIER_CHARS    = (('A'..'Z').to_a + ('0'..'9').to_a - %w(0 1 I O)).freeze
+    include Spree::Payment::Processing
+    include Spree::NumberGenerator
+
+    def generate_number(options = {})
+      options[:prefix] ||= 'P'
+      options[:letters] ||= true
+      options[:length] ||= 7
+      super(options)
+    end
+
     NON_RISKY_AVS_CODES = ['B', 'D', 'H', 'J', 'M', 'Q', 'T', 'V', 'X', 'Y'].freeze
     RISKY_AVS_CODES     = ['A', 'C', 'E', 'F', 'G', 'I', 'K', 'L', 'N', 'O', 'P', 'R', 'S', 'U', 'W', 'Z'].freeze
 
     belongs_to :order, class_name: 'Spree::Order', touch: true, inverse_of: :payments
     belongs_to :source, polymorphic: true
-    belongs_to :payment_method, class_name: 'Spree::PaymentMethod'
+    belongs_to :payment_method, class_name: 'Spree::PaymentMethod', inverse_of: :payments
 
-    has_many :offsets, -> { where("source_type = 'Spree::Payment' AND amount < 0 AND state = 'completed'") },
-      class_name: "Spree::Payment", foreign_key: :source_id
+    has_many :offsets, -> { offset_payment }, class_name: "Spree::Payment", foreign_key: :source_id
     has_many :log_entries, as: :source
     has_many :state_changes, as: :stateful
-    has_many :capture_events, :class_name => 'Spree::PaymentCaptureEvent'
+    has_many :capture_events, class_name: 'Spree::PaymentCaptureEvent'
     has_many :refunds, inverse_of: :payment
 
+    validates_presence_of :payment_method
     before_validation :validate_source
-    before_create :set_unique_identifier
 
     after_save :create_payment_profile, if: :profiles_supported?
 
     # update the order totals, etc.
     after_save :update_order
+
     # invalidate previously entered payments
     after_create :invalidate_old_payments
 
@@ -31,28 +41,27 @@ module Spree
 
     after_initialize :build_source
 
+    validates :amount, numericality: true
+
+    default_scope { order("#{self.table_name}.created_at") }
+
     scope :from_credit_card, -> { where(source_type: 'Spree::CreditCard') }
     scope :with_state, ->(s) { where(state: s.to_s) }
+    # "offset" is reserved by activerecord
+    scope :offset_payment, -> { where("source_type = 'Spree::Payment' AND amount < 0 AND state = 'completed'") }
+
+    scope :checkout, -> { with_state('checkout') }
     scope :completed, -> { with_state('completed') }
     scope :pending, -> { with_state('pending') }
     scope :processing, -> { with_state('processing') }
     scope :failed, -> { with_state('failed') }
+
     scope :risky, -> { where("avs_response IN (?) OR (cvv_response_code IS NOT NULL and cvv_response_code != 'M') OR state = 'failed'", RISKY_AVS_CODES) }
     scope :valid, -> { where.not(state: %w(failed invalid)) }
-
-    after_rollback :persist_invalid
-
-    validates :amount, numericality: true
 
     # transaction_id is much easier to understand
     def transaction_id
       response_code
-    end
-
-    def persist_invalid
-      return unless ['failed', 'invalid'].include?(state)
-      state_will_change!
-      save
     end
 
     # order state machine (see http://github.com/pluginaweek/state_machine/tree/master for details)
@@ -157,8 +166,16 @@ module Spree
       return true
     end
 
+    def captured_amount
+      capture_events.sum(:amount)
+    end
+
     def uncaptured_amount
-      amount - capture_events.sum(:amount)
+      amount - captured_amount
+    end
+
+    def editable?
+      checkout? || pending?
     end
 
     private
@@ -178,7 +195,12 @@ module Spree
       end
 
       def create_payment_profile
-        return unless source.respond_to?(:has_payment_profile?) && !source.has_payment_profile?
+        # Don't attempt to create on bad payments.
+        return if %w(invalid failed).include?(state)
+        # Payment profile cannot be created without source
+        return unless source
+        # Imported payments shouldn't create a payment profile.
+        return if source.imported
 
         payment_method.create_profile(self)
       rescue ActiveMerchant::ConnectionError => e
@@ -186,13 +208,29 @@ module Spree
       end
 
       def invalidate_old_payments
-        order.payments.with_state('checkout').where("id != ?", self.id).each do |payment|
-          payment.invalidate!
+        if state != 'invalid' and state != 'failed'
+          order.payments.with_state('checkout').where("id != ?", self.id).each do |payment|
+            payment.invalidate!
+          end
+        end
+      end
+
+      def split_uncaptured_amount
+        if uncaptured_amount > 0
+          order.payments.create! amount: uncaptured_amount,
+                                 avs_response: avs_response,
+                                 cvv_response_code: cvv_response_code,
+                                 cvv_response_message: cvv_response_message,
+                                 payment_method: payment_method,
+                                 response_code: response_code,
+                                 source: source,
+                                 state: 'pending'
+          update_attributes(amount: captured_amount)
         end
       end
 
       def update_order
-        if self.completed?
+        if completed? || void?
           order.updater.update_payment_total
         end
 
@@ -207,19 +245,5 @@ module Spree
         end
       end
 
-      # Necessary because some payment gateways will refuse payments with
-      # duplicate IDs. We *were* using the Order number, but that's set once and
-      # is unchanging. What we need is a unique identifier on a per-payment basis,
-      # and this is it. Related to #1998.
-      # See https://github.com/spree/spree/issues/1998#issuecomment-12869105
-      def set_unique_identifier
-        begin
-          self.identifier = generate_identifier
-        end while self.class.exists?(identifier: self.identifier)
-      end
-
-      def generate_identifier
-        Array.new(8){ IDENTIFIER_CHARS.sample }.join
-      end
   end
 end

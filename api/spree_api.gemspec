@@ -6,7 +6,8 @@ Gem::Specification.new do |gem|
   gem.email         = ["ryan@spreecommerce.com"]
   gem.description   = %q{Spree's API}
   gem.summary       = %q{Spree's API}
-  gem.homepage      = ""
+  gem.homepage      = 'https://spreecommerce.com'
+  gem.license       = %q{BSD-3}
 
   gem.files         = `git ls-files`.split($\)
   gem.executables   = gem.files.grep(%r{^bin/}).map{ |f| File.basename(f) }
@@ -16,6 +17,6 @@ Gem::Specification.new do |gem|
   gem.version       = version
 
   gem.add_dependency 'spree_core', version
-  gem.add_dependency 'rabl', '~> 0.9.4.pre1'
+  gem.add_dependency 'rabl', '~> 0.11.6'
   gem.add_dependency 'versioncake', '~> 2.3.1'
 end

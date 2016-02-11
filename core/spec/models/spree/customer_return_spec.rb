@@ -1,11 +1,45 @@
 require 'spec_helper'
 
-describe Spree::CustomerReturn do
+describe Spree::CustomerReturn, :type => :model do
   before do
-    Spree::Order.any_instance.stub(return!: true)
+    allow_any_instance_of(Spree::Order).to receive_messages(return!: true)
   end
 
   describe ".validation" do
+    describe "#must_have_return_authorization" do
+      let(:customer_return)       { build(:customer_return) }
+
+      let(:inventory_unit)  { build(:inventory_unit) }
+      let(:return_item)     { build(:return_item, inventory_unit: inventory_unit) }
+
+      subject { customer_return.valid? }
+
+      before do
+        customer_return.return_items << return_item
+      end
+
+      context "return item does not belong to return authorization" do
+        before do
+          return_item.return_authorization = nil
+        end
+
+        it "is not valid" do
+          expect(subject).to eq false
+        end
+
+        it "adds an error message" do
+          subject
+          expect(customer_return.errors.full_messages).to include(Spree.t(:missing_return_authorization, item_name: inventory_unit.variant.name))
+        end
+      end
+
+      context "return item belongs to return authorization" do
+        it "is valid" do
+          expect(subject).to eq true
+        end
+      end
+    end
+
     describe "#return_items_belong_to_same_order" do
       let(:customer_return)       { build(:customer_return) }
 
@@ -33,7 +67,6 @@ describe Spree::CustomerReturn do
           subject
           expect(customer_return.errors.full_messages).to include(Spree.t(:return_items_cannot_be_associated_with_multiple_orders))
         end
-
       end
 
       context "return items are part of the same order" do
@@ -53,7 +86,7 @@ describe Spree::CustomerReturn do
 
         it "should return the assigned number" do
           customer_return.save
-          customer_return.number.should == '123'
+          expect(customer_return.number).to eq('123')
         end
       end
 
@@ -61,12 +94,12 @@ describe Spree::CustomerReturn do
         let(:customer_return) { Spree::CustomerReturn.new(number: nil) }
 
         before do
-          customer_return.stub(valid?: true, process_return!: true)
+          allow(customer_return).to receive_messages(valid?: true, process_return!: true)
         end
 
         it "should assign number with random CR number" do
           customer_return.save
-          customer_return.number.should =~ /CR\d{9}/
+          expect(customer_return.number).to match(/CR\d{9}/)
         end
       end
     end
@@ -91,8 +124,8 @@ describe Spree::CustomerReturn do
     let(:customer_return) { Spree::CustomerReturn.new }
 
     it "returns a Spree::Money" do
-      customer_return.stub(pre_tax_total: 21.22)
-      customer_return.display_pre_tax_total.should == Spree::Money.new(21.22)
+      allow(customer_return).to receive_messages(pre_tax_total: 21.22)
+      expect(customer_return.display_pre_tax_total).to eq(Spree::Money.new(21.22))
     end
   end
 
@@ -129,7 +162,7 @@ describe Spree::CustomerReturn do
   end
 
   context ".after_save" do
-    let(:inventory_unit)  { create(:inventory_unit, state: 'shipped') }
+    let(:inventory_unit)  { create(:inventory_unit, state: 'shipped', order: create(:shipped_order)) }
     let(:return_item)     { create(:return_item, inventory_unit: inventory_unit) }
 
     context "to the initial stock location" do
@@ -179,7 +212,7 @@ describe Spree::CustomerReturn do
       it "should not update the stock item counts in the original stock location" do
         count_on_hand = inventory_unit.find_stock_item.count_on_hand
         create(:customer_return_without_return_items, return_items: [return_item], stock_location_id: new_stock_location.id)
-        inventory_unit.find_stock_item.count_on_hand.should == count_on_hand
+        expect(inventory_unit.find_stock_item.count_on_hand).to eq(count_on_hand)
       end
     end
   end
@@ -192,7 +225,7 @@ describe Spree::CustomerReturn do
     subject { customer_return.fully_reimbursed? }
 
     context 'when some return items are undecided' do
-      it { should be_false }
+      it { is_expected.to be false }
     end
 
     context 'when all return items are decided' do
@@ -200,27 +233,27 @@ describe Spree::CustomerReturn do
       context 'when all return items are rejected' do
         before { customer_return.return_items.each(&:reject!) }
 
-        it { should be_true }
+        it { is_expected.to be true }
       end
 
       context 'when all return items are accepted' do
         before { customer_return.return_items.each(&:accept!) }
 
         context 'when some return items have no reimbursement' do
-          it { should be_false }
+          it { is_expected.to be false }
         end
 
         context 'when all return items have a reimbursement' do
           let!(:reimbursement) { create(:reimbursement, customer_return: customer_return) }
 
           context 'when some reimbursements are not reimbursed' do
-            it { should be_false }
+            it { is_expected.to be false }
           end
 
           context 'when all reimbursements are reimbursed' do
             before { reimbursement.perform! }
 
-            it { should be_true }
+            it { is_expected.to be true }
           end
         end
       end

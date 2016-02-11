@@ -1,11 +1,21 @@
 module Spree
   class StockTransfer < Spree::Base
-    has_many :stock_movements, :as => :originator
+    extend FriendlyId
+    friendly_id :number, slug_column: :number, use: :slugged
 
-    belongs_to :source_location, :class_name => 'StockLocation'
-    belongs_to :destination_location, :class_name => 'StockLocation'
+    include Spree::NumberGenerator
 
-    make_permalink field: :number, prefix: 'T'
+    def generate_number(options = {})
+      options[:prefix] ||= 'T'
+      super(options)
+    end
+
+    has_many :stock_movements, as: :originator
+
+    belongs_to :source_location, class_name: 'StockLocation'
+    belongs_to :destination_location, class_name: 'StockLocation'
+
+    self.whitelisted_ransackable_attributes = %w[reference source_location_id destination_location_id closed_at created_at number]
 
     def to_param
       number

@@ -9,6 +9,8 @@ Spree::Core::Engine.add_routes do
   end
 
   namespace :api, defaults: { format: 'json' } do
+    resources :promotions, only: [:show]
+
     resources :products do
       resources :images
       resources :variants
@@ -51,16 +53,19 @@ Spree::Core::Engine.add_routes do
       end
     end
 
-    resources :variants, only: [:index, :show] do
+    resources :variants do
       resources :images
     end
 
     resources :option_types do
       resources :option_values
     end
+    resources :option_values
+
+    resources :option_values, only: :index
 
     get '/orders/mine', to: 'orders#mine', as: 'my_orders'
-    get "/orders/current", to: "orders#current", to: "orders#current", as: "current_order"
+    get "/orders/current", to: "orders#current", as: "current_order"
 
     resources :orders, concerns: :order_routes
 
@@ -70,6 +75,12 @@ Spree::Core::Engine.add_routes do
     end
 
     resources :shipments, only: [:create, :update] do
+      collection do
+        post 'transfer_to_location'
+        post 'transfer_to_shipment'
+        get :mine
+      end
+
       member do
         put :ready
         put :ship
@@ -104,8 +115,8 @@ Spree::Core::Engine.add_routes do
       resources :stock_items
     end
 
-    get '/config/money', to: 'config#money'
-    get '/config', to: 'config#show'
+    resources :stock_items, only: [:index, :update, :destroy]
+    resources :stores
 
     put '/classifications', to: 'classifications#update', as: :classifications
     get '/taxons/products', to: 'taxons#products', as: :taxon_products

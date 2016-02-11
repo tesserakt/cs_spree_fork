@@ -1,7 +1,7 @@
 module Spree
   class StockLocation < Spree::Base
     has_many :shipments
-    has_many :stock_items, dependent: :delete_all
+    has_many :stock_items, dependent: :delete_all, inverse_of: :stock_location
     has_many :stock_movements, through: :stock_items
 
     belongs_to :state, class_name: 'Spree::State'
@@ -15,6 +15,10 @@ module Spree
     after_create :create_stock_items, :if => "self.propagate_all_variants?"
     after_save :ensure_one_default
 
+    def state_text
+      state.try(:abbr) || state.try(:name) || state_name
+    end
+
     # Wrapper for creating a new stock item respecting the backorderable config
     def propagate_variant(variant)
       self.stock_items.create!(variant: variant, backorderable: self.backorderable_default)
@@ -27,12 +31,25 @@ module Spree
       self.stock_item(variant) || propagate_variant(variant)
     end
 
-    def stock_item(variant)
-      stock_items.where(variant_id: variant).order(:id).first
+    # Returns an instance of StockItem for the variant id.
+    #
+    # @param variant_id [String] The id of a variant.
+    #
+    # @return [StockItem] Corresponding StockItem for the StockLocation's variant.
+    def stock_item(variant_id)
+      stock_items.where(variant_id: variant_id).order(:id).first
     end
 
+    # Attempts to look up StockItem for the variant, and creates one if not found.
+    # This method accepts an instance of the variant.
+    # Other methods in this model attempt to pass a variant,
+    # but controller actions can pass just the variant id as a parameter.
+    #
+    # @param variant [Variant] Variant instance.
+    #
+    # @return [StockItem] Corresponding StockItem for the StockLocation's variant.
     def stock_item_or_create(variant)
-      stock_item(variant) || stock_items.create(variant: variant)
+      stock_item(variant) || stock_items.create(variant_id: variant.id)
     end
 
     def count_on_hand(variant)
@@ -84,14 +101,16 @@ module Spree
 
     private
       def create_stock_items
-        Variant.find_each { |variant| self.propagate_variant(variant) }
+        Variant.includes(:product).find_each do |variant|
+          propagate_variant(variant)
+        end
       end
 
       def ensure_one_default
         if self.default
-          StockLocation.where.not(id: self.id).each do |stock_location|
+          StockLocation.where(default: true).where.not(id: self.id).each do |stock_location|
             stock_location.default = false
-            stock_location.save! if stock_location.changed?
+            stock_location.save!
           end
         end
       end

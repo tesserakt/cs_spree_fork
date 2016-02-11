@@ -1,7 +1,7 @@
 require 'spec_helper'
 
 module Spree
-  describe Exchange do
+  describe Exchange, :type => :model do
     let(:order) { Spree::Order.new }
 
     let(:return_item_1) { build(:exchange_return_item) }
@@ -11,10 +11,10 @@ module Spree
 
     describe "#description" do
       before do
-        return_item_1.stub(:variant) { double(options_text: "foo") }
-        return_item_1.stub(:exchange_variant) { double(options_text: "bar") }
-        return_item_2.stub(:variant) { double(options_text: "baz") }
-        return_item_2.stub(:exchange_variant) { double(options_text: "qux") }
+        allow(return_item_1).to receive(:variant) { double(options_text: "foo") }
+        allow(return_item_1).to receive(:exchange_variant) { double(options_text: "bar") }
+        allow(return_item_2).to receive(:variant) { double(options_text: "baz") }
+        allow(return_item_2).to receive(:exchange_variant) { double(options_text: "qux") }
       end
 
       it "describes the return items' change in options" do
@@ -44,6 +44,18 @@ module Spree
         expect(new_inventory_units.count).to eq 1
         expect(new_inventory_units.first.original_return_item).to eq return_item
         expect(new_inventory_units.first.line_item).to eq return_item.inventory_unit.line_item
+      end
+
+      context "when it cannot create shipments for all items" do
+        before do
+          StockItem.where(:variant_id => return_item.exchange_variant_id).destroy_all
+        end
+
+        it 'raises an UnableToCreateShipments error' do
+          expect {
+            subject
+          }.to raise_error(Spree::Exchange::UnableToCreateShipments)
+        end
       end
     end
 

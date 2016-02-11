@@ -3,14 +3,14 @@ module Spree
     class ProductsController < ResourceController
       helper 'spree/products'
 
-      before_filter :load_data, :except => :index
+      before_action :load_data, except: :index
       create.before :create_before
       update.before :update_before
       helper_method :clone_object_url
 
       def show
         session[:return_to] ||= request.referer
-        redirect_to( :action => :edit )
+        redirect_to action: :edit
       end
 
       def index
@@ -31,10 +31,11 @@ module Spree
           flash[:success] = flash_message_for(@object, :successfully_updated)
           respond_with(@object) do |format|
             format.html { redirect_to location_after_save }
-            format.js   { render :layout => false }
+            format.js   { render layout: false }
           end
         else
-          # Stops people submitting blank slugs, causing errors when they try to update the product again
+          # Stops people submitting blank slugs, causing errors when they try to
+          # update the product again
           @product.slug = @product.slug_was if @product.slug.blank?
           invoke_callbacks(:update, :fails)
           respond_with(@object)
@@ -66,7 +67,7 @@ module Spree
       end
 
       def stock
-        @variants = @product.variants
+        @variants = @product.variants.includes(*variant_stock_includes)
         @variants = [@product.master] if @variants.empty?
         @stock_locations = StockLocation.accessible_by(current_ability, :read)
         if @stock_locations.empty?
@@ -77,62 +78,70 @@ module Spree
 
       protected
 
-        def find_resource
-          Product.with_deleted.friendly.find(params[:id])
+      def find_resource
+        Product.with_deleted.friendly.find(params[:id])
+      end
+
+      def location_after_save
+        spree.edit_admin_product_url(@product)
+      end
+
+      def load_data
+        @taxons = Taxon.order(:name)
+        @option_types = OptionType.order(:name)
+        @tax_categories = TaxCategory.order(:name)
+        @shipping_categories = ShippingCategory.order(:name)
+      end
+
+      def collection
+        return @collection if @collection.present?
+        params[:q] ||= {}
+        params[:q][:deleted_at_null] ||= "1"
+
+        params[:q][:s] ||= "name asc"
+        @collection = super
+        # Don't delete params[:q][:deleted_at_null] here because it is used in view to check the
+        # checkbox for 'q[deleted_at_null]'. This also messed with pagination when deleted_at_null is checked.
+        if params[:q][:deleted_at_null] == '0'
+          @collection = @collection.with_deleted
         end
+        # @search needs to be defined as this is passed to search_form_for
+        # Temporarily remove params[:q][:deleted_at_null] from params[:q] to ransack products.
+        # This is to include all products and not just deleted products.
+        @search = @collection.ransack(params[:q].reject { |k, _v| k.to_s == 'deleted_at_null' })
+        @collection = @search.result.
+              distinct_by_product_ids(params[:q][:s]).
+              includes(product_includes).
+              page(params[:page]).
+              per(params[:per_page] || Spree::Config[:admin_products_per_page])
+        @collection
+      end
 
-        def location_after_save
-          spree.edit_admin_product_url(@product)
-        end
+      def create_before
+        return if params[:product][:prototype_id].blank?
+        @prototype = Spree::Prototype.find(params[:product][:prototype_id])
+      end
 
-        def load_data
-          @taxons = Taxon.order(:name)
-          @option_types = OptionType.order(:name)
-          @tax_categories = TaxCategory.order(:name)
-          @shipping_categories = ShippingCategory.order(:name)
-        end
+      def update_before
+        # note: we only reset the product properties if we're receiving a post
+        #       from the form on that tab
+        return unless params[:clear_product_properties]
+        params[:product] ||= {}
+      end
 
-        def collection
-          return @collection if @collection.present?
-          params[:q] ||= {}
-          params[:q][:deleted_at_null] ||= "1"
+      def product_includes
+        [{ variants: [:images], master: [:images, :default_price] }]
+      end
 
-          params[:q][:s] ||= "name asc"
-          @collection = super
-          @collection = @collection.with_deleted if params[:q][:deleted_at_null] == '0'
-          # @search needs to be defined as this is passed to search_form_for
-          @search = @collection.ransack(params[:q])
-          @collection = @search.result.
-                distinct_by_product_ids(params[:q][:s]).
-                includes(product_includes).
-                page(params[:page]).
-                per(Spree::Config[:admin_products_per_page])
+      def clone_object_url(resource)
+        clone_admin_product_url resource
+      end
 
-          @collection
-        end
+      private
 
-        def create_before
-          return if params[:product][:prototype_id].blank?
-          @prototype = Spree::Prototype.find(params[:product][:prototype_id])
-        end
-
-        def update_before
-          # note: we only reset the product properties if we're receiving a post from the form on that tab
-          return unless params[:clear_product_properties]
-          params[:product] ||= {}
-        end
-
-        def product_includes
-          [{ :variants => [:images], :master => [:images, :default_price]}]
-        end
-
-        def clone_object_url resource
-          clone_admin_product_url resource
-        end
-
-        def permit_attributes
-          params.require(:product).permit!
-        end
+      def variant_stock_includes
+        [:images, stock_items: :stock_location, option_values: :option_type]
+      end
     end
   end
 end

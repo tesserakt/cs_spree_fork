@@ -3,13 +3,13 @@ jQuery ($) ->
   order_id = $('#payments').data('order-id')
   class Payment
     constructor: (id) ->
-      @url  = Spree.url("#{Spree.routes.payments_api(order_id)}/#{id}.json")
+      @url  = Spree.url("#{Spree.routes.payments_api(order_id)}/#{id}.json" + '?token=' + Spree.api_key)
       @json = $.getJSON @url.toString(), (data) =>
         @data = data
 
-    if_pending: (callback) ->
+    if_editable: (callback) ->
       @json.done (data) ->
-        callback() if data.state is 'pending'
+        callback() if data.state in ['checkout', 'pending']
 
     update: (attributes, success) ->
       jqXHR = $.ajax
@@ -48,9 +48,9 @@ jQuery ($) ->
       @$buttons().remove()
 
     $new_button: (action) ->
-      $('<a />')
+      $("<a><span class='icon icon-#{action}'></span></a>")
         .attr
-          class: "fa fa-#{action} icon_link no-text with-tip"
+          class: "payment-action-#{action} btn btn-default btn-sm icon-link no-text with-tip"
           title: Spree.translations[action]
         .data
           action: action
@@ -61,13 +61,9 @@ jQuery ($) ->
             $(@).data('clicked', true)
           mouseup: =>
             @[action]()
-        .powerTip
-          smartPlacement: true
-          fadeInTime:     50
-          fadeOutTime:    50
 
     $buttons: ->
-      @$actions().find(".fa-#{@action}, .fa-cancel")
+      @$actions().find(".payment-action-#{@action}, .payment-action-cancel")
 
     $actions: ->
       @$el.find('.actions')
@@ -142,8 +138,8 @@ jQuery ($) ->
       separator = Spree.translations.currency_separator
       amount.replace(///[^\d#{separator}]///g, '')
 
-  # Attach ShowPaymentView to each pending payment in the table
+  # Attach ShowPaymentView to each editable payment in the table
   $('.admin tr[data-hook=payments_row]').each ->
     $el = $(@)
     payment = new Payment($el.prop('id').match(/\d+$/))
-    payment.if_pending -> new ShowPaymentView($el, payment)
+    payment.if_editable -> new ShowPaymentView($el, payment)

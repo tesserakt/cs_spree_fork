@@ -1,24 +1,34 @@
-<%= render :partial => 'spree/admin/shared/order_tabs', :locals => { :current => 'Adjustments' } %>
+<%= render partial: 'spree/admin/shared/order_tabs', locals: { current: :adjustments} %>
 
 <% content_for :page_title do %>
-   <i class="fa fa-arrow-right"></i> <%= Spree.t(:adjustments) %>
+   / <%= plural_resource_name(Spree::Adjustment) %>
 <% end %>
 
 <% content_for :page_actions do %>
-  <li><%= button_link_to Spree.t(:new_adjustment), new_admin_order_adjustment_url(@order), :icon => 'plus' %></li>
-  <li><%= button_link_to Spree.t(:back_to_orders_list), admin_orders_path, :icon => 'arrow-left' %></li>
+  <%= button_link_to(Spree.t(:new_adjustment), new_admin_order_adjustment_url(@order), class: "btn-success", icon: 'add') if can? :create, Spree::Adjustment %>
 <% end %>
 
-<%= render :partial => 'adjustments_table' %>
-
-<% if @order.can_add_coupon? %>
-  <div data-hook="adjustments_new_coupon_code">
-    <%= text_field_tag "coupon_code", "", :placeholder => Spree.t(:coupon_code) %>
-    <%= button Spree.t(:add_coupon_code), 'plus', 'submit', :id => "add_coupon_code" %>
+<% if @adjustments.present? %>
+  <div class="panel panel-default">
+    <%= render partial: 'adjustments_table' %>
+  </div>
+<% else %>
+  <div class="alert alert-warning">
+    <%= Spree.t(:no_resource_found, resource: plural_resource_name(Spree::Adjustment)) %>
   </div>
 <% end %>
-<%= javascript_tag do -%>
-  var order_number = '<%= @order.number %>';
-<% end -%>
 
-<%= button_link_to Spree.t(:continue), @order.cart? ? new_admin_order_payment_url(@order) : admin_orders_url, :icon => 'arrow-right' %>
+<% if @order.can_add_coupon? %>
+  <div class="well" data-hook="adjustments_new_coupon_code">
+    <div class="form-group">
+      <%= text_field_tag "coupon_code", "", placeholder: Spree.t(:coupon_code), class: "form-control" %>
+    </div>
+    <%= button Spree.t(:add_coupon_code), 'plus', 'submit', id: "add_coupon_code" %>
+  </div>
+<% end %>
+
+<%= javascript_tag do %>
+  var order_number = '<%= @order.number %>';
+<% end %>
+
+<%= render partial: 'spree/admin/shared/order_summary' %>

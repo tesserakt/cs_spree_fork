@@ -2,13 +2,13 @@ module Spree
   module Api
     class PropertiesController < Spree::Api::BaseController
 
-      before_filter :find_property, only: [:show, :update, :destroy]
+      before_action :find_property, only: [:show, :update, :destroy]
 
       def index
         @properties = Spree::Property.accessible_by(current_ability, :read)
 
         if params[:ids]
-          @properties = @properties.where(:id => params[:ids].split(","))
+          @properties = @properties.where(id: params[:ids].split(",").flatten)
         else
           @properties = @properties.ransack(params[:q]).result
         end
@@ -25,7 +25,7 @@ module Spree
       end
 
       def create
-        authorize! :create, Property
+        authorize! :create, Spree::Property
         @property = Spree::Property.new(property_params)
         if @property.save
           respond_with(@property, status: 201, default_template: :show)

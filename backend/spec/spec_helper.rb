@@ -45,9 +45,15 @@ require 'paperclip/matchers'
 require 'capybara/poltergeist'
 Capybara.javascript_driver = :poltergeist
 
+# Set timeout to something high enough to allow CI to pass
+Capybara.default_wait_time = 10
+
 RSpec.configure do |config|
   config.color = true
+  config.fail_fast = ENV['FAIL_FAST'] || false
+  config.infer_spec_type_from_file_location!
   config.mock_with :rspec
+  config.raise_errors_for_deprecations!
 
   # If you're not using ActiveRecord, or you'd prefer not to run each of your
   # examples within a transaction, comment the following line or assign false
@@ -62,7 +68,7 @@ RSpec.configure do |config|
   config.before(:each) do
     Rails.cache.clear
     WebMock.disable!
-    if example.metadata[:js]
+    if RSpec.current_example.metadata[:js]
       DatabaseCleaner.strategy = :truncation
     else
       DatabaseCleaner.strategy = :transaction
@@ -79,12 +85,12 @@ RSpec.configure do |config|
 
   config.after(:each) do
     # Ensure js requests finish processing before advancing to the next test
-    wait_for_ajax if example.metadata[:js]
+    wait_for_ajax if RSpec.current_example.metadata[:js]
 
     DatabaseCleaner.clean
   end
 
-  config.after(:each, :type => :feature) do
+  config.after(:each, :type => :feature) do |example|
     missing_translations = page.body.scan(/translation missing: #{I18n.locale}\.(.*?)[\s<\"&]/)
     if missing_translations.any?
       puts "Found missing translations: #{missing_translations.inspect}"
@@ -96,12 +102,24 @@ RSpec.configure do |config|
 
   config.include Spree::TestingSupport::Preferences
   config.include Spree::TestingSupport::UrlHelpers
-  config.include Spree::TestingSupport::ControllerRequests
+  config.include Spree::TestingSupport::ControllerRequests, type: :controller
   config.include Spree::TestingSupport::Flash
 
   config.include Paperclip::Shoulda::Matchers
 
   config.extend WithModel
+end
 
-  config.fail_fast = ENV['FAIL_FAST'] || false
+module Spree
+  module TestingSupport
+    module Flash
+      def assert_flash_success(flash)
+        flash = convert_flash(flash)
+
+        within(".alert-success") do
+          expect(page).to have_content(flash)
+        end
+      end
+    end
+  end
 end

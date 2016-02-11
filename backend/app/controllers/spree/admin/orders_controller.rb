@@ -1,8 +1,8 @@
 module Spree
   module Admin
     class OrdersController < Spree::Admin::BaseController
-      before_filter :initialize_order_events
-      before_filter :load_order, :only => [:edit, :update, :cancel, :resume, :approve, :resend, :open_adjustments, :close_adjustments]
+      before_action :initialize_order_events
+      before_action :load_order, only: [:edit, :update, :cancel, :resume, :approve, :resend, :open_adjustments, :close_adjustments, :cart]
 
       respond_to :html
 
@@ -11,6 +11,7 @@ module Spree
         params[:q][:completed_at_not_null] ||= '1' if Spree::Config[:show_only_complete_orders_by_default]
         @show_only_completed = params[:q][:completed_at_not_null] == '1'
         params[:q][:s] ||= @show_only_completed ? 'completed_at desc' : 'created_at desc'
+        params[:q][:completed_at_not_null] = '' unless @show_only_completed
 
         # As date params are deleted if @show_only_completed, store
         # the original date so we can restore them into the params
@@ -20,11 +21,11 @@ module Spree
 
         params[:q].delete(:inventory_units_shipment_id_null) if params[:q][:inventory_units_shipment_id_null] == "0"
 
-        if !params[:q][:created_at_gt].blank?
+        if params[:q][:created_at_gt].present?
           params[:q][:created_at_gt] = Time.zone.parse(params[:q][:created_at_gt]).beginning_of_day rescue ""
         end
 
-        if !params[:q][:created_at_lt].blank?
+        if params[:q][:created_at_lt].present?
           params[:q][:created_at_lt] = Time.zone.parse(params[:q][:created_at_lt]).end_of_day rescue ""
         end
 
@@ -49,12 +50,23 @@ module Spree
 
       def new
         @order = Order.create(order_params)
-        redirect_to edit_admin_order_url(@order)
+        redirect_to cart_admin_order_url(@order)
       end
 
       def edit
+        can_not_transition_without_customer_info
+
+        unless @order.completed?
+          @order.refresh_shipment_rates(ShippingMethod::DISPLAY_ON_FRONT_AND_BACK_END)
+        end
+      end
+
+      def cart
         unless @order.completed?
           @order.refresh_shipment_rates
+        end
+        if @order.shipments.shipped.count > 0
+          redirect_to edit_admin_order_url(@order)
         end
       end
 
@@ -73,7 +85,7 @@ module Spree
       end
 
       def cancel
-        @order.cancel!
+        @order.canceled_by(try_spree_current_user)
         flash[:success] = Spree.t(:order_canceled)
         redirect_to :back
       end
@@ -91,23 +103,23 @@ module Spree
       end
 
       def resend
-        OrderMailer.confirm_email(@order.id, true).deliver
+        OrderMailer.confirm_email(@order.id, true).deliver_later
         flash[:success] = Spree.t(:order_email_resent)
 
         redirect_to :back
       end
 
       def open_adjustments
-        adjustments = @order.adjustments.where(:state => 'closed')
-        adjustments.update_all(:state => 'open')
+        adjustments = @order.all_adjustments.where(state: 'closed')
+        adjustments.update_all(state: 'open')
         flash[:success] = Spree.t(:all_adjustments_opened)
 
         respond_with(@order) { |format| format.html { redirect_to :back } }
       end
 
       def close_adjustments
-        adjustments = @order.adjustments.where(:state => 'open')
-        adjustments.update_all(:state => 'closed')
+        adjustments = @order.all_adjustments.where(state: 'open')
+        adjustments.update_all(state: 'closed')
         flash[:success] = Spree.t(:all_adjustments_closed)
 
         respond_with(@order) { |format| format.html { redirect_to :back } }
@@ -116,11 +128,11 @@ module Spree
       private
         def order_params
           params[:created_by_id] = try_spree_current_user.try(:id)
-          params.permit(:created_by_id)
+          params.permit(:created_by_id, :user_id)
         end
 
         def load_order
-          @order = Order.includes(:adjustments).find_by_number!(params[:id])
+          @order = Order.includes(:adjustments).friendly.find(params[:id])
           authorize! action, @order
         end
 

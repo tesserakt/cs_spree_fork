@@ -4,7 +4,7 @@ module Spree
 
       def index
         if params[:ids]
-          @products = product_scope.where(:id => params[:ids].split(","))
+          @products = product_scope.where(id: params[:ids].split(",").flatten)
         else
           @products = product_scope.ransack(params[:q]).result
         end
@@ -12,6 +12,7 @@ module Spree
         @products = @products.distinct.page(params[:page]).per(params[:per_page])
         expires_in 15.minutes, :public => true
         headers['Surrogate-Control'] = "max-age=#{15.minutes}"
+        respond_with(@products)
       end
 
       def show
@@ -19,6 +20,7 @@ module Spree
         expires_in 15.minutes, :public => true
         headers['Surrogate-Control'] = "max-age=#{15.minutes}"
         headers['Surrogate-Key'] = "product_id=1"
+        respond_with(@product)
       end
 
       # Takes besides the products attributes either an array of variants or
@@ -55,12 +57,12 @@ module Spree
       #   }
       #
       def create
-        authorize! :create, Product
+        authorize! :create, Spree::Product
         params[:product][:available_on] ||= Time.now
         set_up_shipping_category
 
         options = { variants_attrs: variants_params, options_attrs: option_types_params }
-        @product = Core::Importer::Product.new(nil, product_params, options).create
+        @product = Spree::Core::Importer::Product.new(nil, product_params, options).create
 
         if @product.persisted?
           respond_with(@product, :status => 201, :default_template => :show)
@@ -74,7 +76,7 @@ module Spree
         authorize! :update, @product
 
         options = { variants_attrs: variants_params, options_attrs: option_types_params }
-        @product = Core::Importer::Product.new(@product, product_params, options).update
+        @product = Spree::Core::Importer::Product.new(@product, product_params, options).update
 
         if @product.errors.empty?
           respond_with(@product.reload, :status => 200, :default_template => :show)
@@ -92,11 +94,7 @@ module Spree
 
       private
         def product_params
-          product_params = params.require(:product).permit(permitted_product_attributes)
-          if product_params[:taxon_ids].present?
-            product_params[:taxon_ids] = product_params[:taxon_ids].split(',')
-          end
-          product_params
+          params.require(:product).permit(permitted_product_attributes)
         end
 
         def variants_params
@@ -117,7 +115,7 @@ module Spree
 
         def set_up_shipping_category
           if shipping_category = params[:product].delete(:shipping_category)
-            id = ShippingCategory.find_or_create_by(name: shipping_category).id
+            id = Spree::ShippingCategory.find_or_create_by(name: shipping_category).id
             params[:product][:shipping_category_id] = id
           end
         end

@@ -40,8 +40,7 @@ module Spree
     has_one :master,
       -> { where is_master: true },
       inverse_of: :product,
-      class_name: 'Spree::Variant',
-      dependent: :destroy
+      class_name: 'Spree::Variant'
 
     has_many :variants,
       -> { where(is_master: false).order("#{::Spree::Variant.quoted_table_name}.position ASC") },
@@ -58,33 +57,41 @@ module Spree
 
     has_many :stock_items, through: :variants_including_master
 
+    has_many :line_items, through: :variants_including_master
+    has_many :orders, through: :line_items
+
     delegate_belongs_to :master, :sku, :price, :currency, :display_amount, :display_price, :weight, :height, :width, :depth, :is_master, :has_default_price?, :cost_currency, :price_in, :amount_in
 
     delegate_belongs_to :master, :cost_price
-
-    after_create :set_master_variant_defaults
-    after_create :add_properties_and_option_types_from_prototype
-    after_create :build_variants_from_option_values_hash, if: :option_values_hash
-
-    after_save :save_master
-    after_save :run_touch_callbacks, if: :anything_changed?
-    after_save :reset_nested_changes
-    after_touch :touch_taxons
 
     delegate :images, to: :master, prefix: true
     alias_method :images, :master_images
 
     has_many :variant_images, -> { order(:position) }, source: :images, through: :variants_including_master
 
+    after_create :set_master_variant_defaults
+    after_create :add_associations_from_prototype
+    after_create :build_variants_from_option_values_hash, if: :option_values_hash
+
+    after_destroy :punch_slug
+    after_restore :update_slug_history
+
+    after_initialize :ensure_master
+
+    after_save :save_master
+    after_save :run_touch_callbacks, if: :anything_changed?
+    after_save :reset_nested_changes
+    after_touch :touch_taxons
+
+    before_validation :normalize_slug, on: :update
+    before_validation :validate_master
+
+    validates :meta_keywords, length: { maximum: 255 }
+    validates :meta_title, length: { maximum: 255 }
     validates :name, presence: true
     validates :price, presence: true, if: proc { Spree::Config[:require_master_price] }
     validates :shipping_category_id, presence: true
-    validates :slug, length: { minimum: 3 }
-    validates :slug, uniqueness: true
-
-    before_validation :normalize_slug, on: :update
-
-    after_destroy :punch_slug
+    validates :slug, length: { minimum: 3 }, allow_blank: true, uniqueness: true
 
     attr_accessor :option_values_hash
 
@@ -92,7 +99,8 @@ module Spree
 
     alias :options :product_option_types
 
-    after_initialize :ensure_master
+    self.whitelisted_ransackable_associations = %w[stores variants_including_master master variants]
+    self.whitelisted_ransackable_attributes = %w[description name slug]
 
     # the master variant is not a member of the variants array
     def has_variants?
@@ -216,12 +224,13 @@ module Spree
 
     private
 
-    def add_properties_and_option_types_from_prototype
+    def add_associations_from_prototype
       if prototype_id && prototype = Spree::Prototype.find_by(id: prototype_id)
         prototype.properties.each do |property|
           product_properties.create(property: property)
         end
         self.option_types = prototype.option_types
+        self.taxons = prototype.taxons
       end
     end
 
@@ -250,7 +259,7 @@ module Spree
 
     def ensure_master
       return unless new_record?
-      self.master ||= Variant.new
+      self.master ||= build_master
     end
 
     def normalize_slug
@@ -258,7 +267,12 @@ module Spree
     end
 
     def punch_slug
-      update_column :slug, "#{Time.now.to_i}_#{slug}" # punch slug with date prefix to allow reuse of original
+      # punch slug with date prefix to allow reuse of original
+      update_column :slug, "#{Time.now.to_i}_#{slug}"[0..254] unless frozen?
+    end
+
+    def update_slug_history
+      self.save!
     end
 
     def anything_changed?
@@ -269,12 +283,39 @@ module Spree
       @nested_changes = false
     end
 
+    def master_updated?
+      master && (
+        master.new_record? ||
+        master.changed? ||
+        (
+          master.default_price &&
+          (
+            master.default_price.new_record? ||
+            master.default_price.changed?
+          )
+        )
+      )
+    end
+
     # there's a weird quirk with the delegate stuff that does not automatically save the delegate object
-    # when saving so we force a save using a hook.
+    # when saving so we force a save using a hook
+    # Fix for issue #5306
     def save_master
-      if master && (master.changed? || master.new_record? || (master.default_price && (master.default_price.changed? || master.default_price.new_record?)))
-        master.save
+      if master_updated?
+        master.save!
         @nested_changes = true
+      end
+    end
+
+    # If the master cannot be saved, the Product object will get its errors
+    # and will be destroyed
+    def validate_master
+      # We call master.default_price here to ensure price is initialized.
+      # Required to avoid Variant#check_price validation failing on create.
+      unless master.default_price && master.valid?
+        master.errors.each do |att, error|
+          self.errors.add(att, error)
+        end
       end
     end
 
@@ -286,8 +327,8 @@ module Spree
     # Try building a slug based on the following fields in increasing order of specificity.
     def slug_candidates
       [
-          :name,
-          [:name, :sku]
+        :name,
+        [:name, :sku]
       ]
     end
 
@@ -295,13 +336,19 @@ module Spree
       run_callbacks(:touch)
     end
 
+    def taxon_and_ancestors
+      taxons.map(&:self_and_ancestors).flatten.uniq
+    end
+
+    # Get the taxonomy ids of all taxons assigned to this product and their ancestors.
+    def taxonomy_ids
+      taxon_and_ancestors.map(&:taxonomy_id).flatten.uniq
+    end
+
     # Iterate through this products taxons and taxonomies and touch their timestamps in a batch
     def touch_taxons
-      taxons_to_touch = taxons.map(&:self_and_ancestors).flatten.uniq
-      Spree::Taxon.where(id: taxons_to_touch.map(&:id)).update_all(updated_at: Time.current)
-
-      taxonomy_ids_to_touch = taxons_to_touch.map(&:taxonomy_id).flatten.uniq
-      Spree::Taxonomy.where(id: taxonomy_ids_to_touch).update_all(updated_at: Time.current)
+      Spree::Taxon.where(id: taxon_and_ancestors.map(&:id)).update_all(updated_at: Time.current)
+      Spree::Taxonomy.where(id: taxonomy_ids).update_all(updated_at: Time.current)
     end
 
   end

@@ -3,61 +3,44 @@
 # we call process directly instead of get
 require 'spec_helper'
 
-describe Spree::Admin::BaseController do
+describe Spree::Admin::BaseController, type: :controller do
   controller(Spree::Admin::BaseController) do
     def index
       authorize! :update, Spree::Order
-      render :text => 'test'
+      render text: 'test'
     end
   end
 
   context "unauthorized request" do
     before do
-      Spree::Admin::BaseController.any_instance.stub(:spree_current_user).and_return(nil)
+      allow_any_instance_of(Spree::Admin::BaseController).to receive(:spree_current_user).and_return(nil)
     end
 
-    it "checks error" do
-      controller.stub root_path: "/rooot"
+    it "redirects to root" do
+      allow(controller).to receive_message_chain(:spree, :root_path).and_return('/root')
       get :index
-      expect(response).to redirect_to "/rooot"
+      expect(response).to redirect_to '/root'
     end
   end
 
-  describe "check alerts" do
-    stub_authorization!
+  context "#generate_api_key" do
+    let(:user) { mock_model(Spree.user_class, has_spree_role?: true) }
 
-    it "checks alerts with before_filter" do
-      controller.should_receive :check_alerts
-      process :index
+    before do
+      allow(controller).to receive(:authorize_admin) { true }
+      allow(controller).to receive(:try_spree_current_user) { user }
     end
 
-    it "saves alerts into session" do
-      controller.stub(:should_check_alerts? => true)
-      Spree::Alert.should_receive(:current).and_return([{"id" => "1", "message" => "test alert", "severity" => 'release'}])
-      process :index
-      session[:alerts].first["message"].should eq "test alert"
+    it "generates the API key for a user when they visit" do
+      expect(user).to receive(:spree_api_key).and_return(nil)
+      expect(user).to receive(:generate_spree_api_key!)
+      get :index
     end
 
-    describe "should_check_alerts?" do
-      before do
-        Rails.env.stub(:production? => true)
-        Spree::Config[:check_for_spree_alerts] = true
-        Spree::Config[:last_check_for_spree_alerts] = nil
-      end
-
-      it "only checks alerts if production and preference is true" do
-        controller.send(:should_check_alerts?).should be_true
-      end
-
-      it "only checks for production" do
-        Rails.env.stub(:production? => false)
-        controller.send(:should_check_alerts?).should be_false
-      end
-
-      it "only checks if preference is true" do
-        Spree::Config[:check_for_spree_alerts] = false
-        controller.send(:should_check_alerts?).should be_false
-      end
+    it "does not attempt to regenerate the API key if the key is already set" do
+      expect(user).to receive(:spree_api_key).and_return('fake')
+      expect(user).not_to receive(:generate_spree_api_key!)
+      get :index
     end
   end
 end

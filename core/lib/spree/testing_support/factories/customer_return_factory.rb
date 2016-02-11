@@ -3,7 +3,7 @@ FactoryGirl.define do
   factory :customer_return, class: Spree::CustomerReturn do
     association(:stock_location, factory: :stock_location)
 
-    ignore do
+    transient do
       line_items_count 1
       return_items_count { line_items_count }
     end
@@ -12,10 +12,7 @@ FactoryGirl.define do
       shipped_order = create(:shipped_order, line_items_count: evaluator.line_items_count)
 
       shipped_order.inventory_units.take(evaluator.return_items_count).each do |inventory_unit|
-        customer_return.return_items << build(:return_item, {
-          inventory_unit: inventory_unit,
-          pre_tax_amount: inventory_unit.pre_tax_amount,
-        })
+        customer_return.return_items << build(:return_item, inventory_unit: inventory_unit)
       end
     end
 
